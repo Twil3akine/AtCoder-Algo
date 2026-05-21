@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::f64::consts::PI;
+use std::ops::{Deref, DerefMut};
 use std::{
     cmp::{max, min},
     io::*,
@@ -580,25 +581,59 @@ impl UnionFind {
 
 // =============================================
 
+/// 汎用セグメント木。
+///
+/// `op` に結合演算、`e` に単位元を渡して使う。
+/// 区間取得は半開区間 `[l, r)` で行う。
+///
+/// 例:
+/// - 和: `op = |x, y| x + y`, `e = 0`
+/// - 最大値: `op = max`, `e = 0` など
+/// - 最小値: `op = min`, `e = INF` など
 struct SegmentTree<T> {
-    f: fn(T, T) -> T,
-    n: usize,
-    array: Vec<T>,
-    dv: T,
+    /// 2つの値をまとめる演算。
+    op: fn(T, T) -> T,
+
+    /// 単位元。
+    ///
+    /// 区間外の値として使われる。
+    e: T,
+
+    /// 元の配列の長さ。
+    len: usize,
+
+    /// セグメント木内部で使う葉の数。
+    ///
+    /// `len` 以上の最小の2冪。
+    size: usize,
+
+    /// セグメント木の内部配列。
+    ///
+    /// 0-indexed の完全二分木として管理する。
+    data: Vec<T>,
 }
+
 impl<T: Copy> SegmentTree<T> {
-    fn new(f: fn(T, T) -> T, n: usize, dv: T) -> Self {
+    /// 長さ `len` のセグメント木を作る。
+    ///
+    /// 初期値はすべて単位元 `e` になる。
+    fn new(op: fn(T, T) -> T, len: usize, e: T) -> Self {
+        let size = len.next_power_of_two();
         Self {
-            f,
-            n,
-            array: vec![dv; 2 * n - 1],
-            dv,
+            op,
+            e,
+            len,
+            size,
+            data: vec![e; 2 * size - 1],
         }
     }
 
-    fn from(f: fn(T, T) -> T, mut ary: Vec<T>, dv: T) -> Self {
+    /// 配列 `ary` からセグメント木を構築する。
+    ///
+    /// 計算量は `O(N)`。
+    fn from(f: fn(T, T) -> T, ary: Vec<T>, e: T) -> Self {
         let n: usize = ary.len().next_power_of_two();
-        let mut array: Vec<T> = vec![dv; 2 * n - 1];
+        let mut array: Vec<T> = vec![e; 2 * n - 1];
 
         for i in 0..ary.len() {
             array[n - 1 + i] = ary[i];
@@ -608,37 +643,255 @@ impl<T: Copy> SegmentTree<T> {
             array[i] = f(array[i * 2 + 1], array[i * 2 + 2]);
         }
 
-        Self { f, n, array, dv }
+        Self {
+            op: f,
+            len: ary.len(),
+            size: n,
+            data: array,
+            e,
+        }
     }
 
+    /// `idx` 番目の値を `v` に更新する。
+    ///
+    /// `idx` は 0-indexed。
+    /// 計算量は `O(log N)`。
     fn apply(&mut self, v: T, mut idx: usize) {
-        idx += self.n - 1;
-        self.array[idx] = v;
+        idx += self.size - 1;
+        self.data[idx] = v;
 
         while idx > 0 {
             idx = (idx - 1) / 2;
-            self.array[idx] = (self.f)(self.array[idx * 2 + 1], self.array[idx * 2 + 2]);
+            self.data[idx] = (self.op)(self.data[idx * 2 + 1], self.data[idx * 2 + 2]);
         }
     }
 
+    /// 半開区間 `[l, r)` の集約値を返す。
+    ///
+    /// `l`, `r` は 0-indexed。
+    /// 計算量は `O(log N)`。
     fn get(&self, l: usize, r: usize) -> T {
-        self._get(l, r, 0, 0, self.n)
+        self._get(l, r, 0, 0, self.size)
     }
 
+    /// `get` の内部実装。
+    ///
+    /// 現在見ているノード `idx` が区間 `[nl, nr)` を表す。
     fn _get(&self, l: usize, r: usize, idx: usize, nl: usize, nr: usize) -> T {
         if nr <= l || r <= nl {
-            return self.dv;
+            return self.e;
         }
 
         if l <= nl && nr <= r {
-            return self.array[idx];
+            return self.data[idx];
         }
 
         let mid = (nl + nr) / 2;
         let left = self._get(l, r, idx * 2 + 1, nl, mid);
         let right = self._get(l, r, idx * 2 + 2, mid, nr);
 
-        (self.f)(left, right)
+        (self.op)(left, right)
+    }
+
+    /// `[l, r)` が条件 `pred` を満たす最小の `l` を探す。
+    ///
+    /// 右端 `r` を固定し、左方向に伸ばしていく。
+    /// AtCoder Library の `min_left` と同じ意味。
+    ///
+    /// `pred(e)` は `true` である必要がある。
+    fn min_left<F: Fn(T) -> bool>(&self, r: usize, pred: F) -> usize {
+        if r == 0 {
+            return 0;
+        }
+
+        let mut acc = self.e;
+
+        match self._min_left(r, &pred, &mut acc, 0, 0, self.size) {
+            Some(l) => l.min(self.len),
+            None => 0,
+        }
+    }
+
+    /// `min_left` の内部実装。
+    ///
+    /// 右側の子から先に探索し、条件が壊れる境界を探す。
+    fn _min_left<F: Fn(T) -> bool>(
+        &self,
+        r: usize,
+        pred: &F,
+        acc: &mut T,
+        idx: usize,
+        nl: usize,
+        nr: usize,
+    ) -> Option<usize> {
+        if r <= nl {
+            return None;
+        }
+
+        if nr <= r {
+            let next = (self.op)(self.data[idx], *acc);
+
+            if pred(next) {
+                *acc = next;
+                return None;
+            }
+
+            if nr - nl == 1 {
+                return Some(nr);
+            }
+        }
+
+        let mid = (nl + nr) / 2;
+
+        if let Some(ans) = self._min_left(r, pred, acc, idx * 2 + 2, mid, nr) {
+            return Some(ans);
+        }
+
+        self._min_left(r, pred, acc, idx * 2 + 1, nl, mid)
+    }
+
+    /// `[l, r)` が条件 `pred` を満たす最大の `r` を探す。
+    ///
+    /// 左端 `l` を固定し、右方向に伸ばしていく。
+    /// AtCoder Library の `max_right` と同じ意味。
+    ///
+    /// `pred(e)` は `true` である必要がある。
+    fn max_right<F: Fn(T) -> bool>(&self, l: usize, pred: F) -> usize {
+        if l == self.len {
+            return self.len;
+        }
+
+        let mut acc = self.e;
+
+        match self._max_right(l, &pred, &mut acc, 0, 0, self.size) {
+            Some(r) => r.min(self.len),
+            None => self.len,
+        }
+    }
+
+    /// `max_right` の内部実装。
+    ///
+    /// 左側の子から先に探索し、条件が壊れる境界を探す。
+    fn _max_right<F: Fn(T) -> bool>(
+        &self,
+        l: usize,
+        pred: &F,
+        acc: &mut T,
+        idx: usize,
+        nl: usize,
+        nr: usize,
+    ) -> Option<usize> {
+        if nr <= l {
+            return None;
+        }
+
+        if l <= nl {
+            let next = (self.op)(*acc, self.data[idx]);
+
+            if pred(next) {
+                *acc = next;
+                return None;
+            }
+
+            if nr - nl == 1 {
+                return Some(nl);
+            }
+        }
+
+        let mid = (nl + nr) / 2;
+
+        if let Some(ans) = self._max_right(l, pred, acc, idx * 2 + 1, nl, mid) {
+            return Some(ans);
+        }
+
+        self._max_right(l, pred, acc, idx * 2 + 2, mid, nr)
+    }
+}
+
+/// 区間和用セグメント木。
+///
+/// `op = +` を使う。
+struct SumSegmentTree<T>(SegmentTree<T>);
+
+impl<T: Copy + Add<Output = T>> SumSegmentTree<T> {
+    /// 長さ `len` の区間和セグメント木を作る。
+    fn new(len: usize, e: T) -> Self {
+        Self(SegmentTree::new(|x, y| x + y, len, e))
+    }
+
+    /// 配列 `a` から区間和セグメント木を作る。
+    fn from(a: Vec<T>, e: T) -> Self {
+        Self(SegmentTree::from(|x, y| x + y, a, e))
+    }
+}
+impl<T> Deref for SumSegmentTree<T> {
+    type Target = SegmentTree<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<T> DerefMut for SumSegmentTree<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// 区間最大値用セグメント木。
+///
+/// `op = max` を使う。
+struct MaxSegmentTree<T>(SegmentTree<T>);
+
+impl<T: Copy + Ord> MaxSegmentTree<T> {
+    /// 長さ `len` の区間最大値セグメント木を作る。
+    fn new(len: usize, e: T) -> Self {
+        Self(SegmentTree::new(max, len, e))
+    }
+
+    /// 配列 `a` から区間最大値セグメント木を作る。
+    fn from(a: Vec<T>, e: T) -> Self {
+        Self(SegmentTree::from(max, a, e))
+    }
+}
+impl<T> Deref for MaxSegmentTree<T> {
+    type Target = SegmentTree<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<T> DerefMut for MaxSegmentTree<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// 区間最小値用セグメント木。
+///
+/// `op = min` を使う。
+struct MinSegmentTree<T>(SegmentTree<T>);
+
+impl<T: Copy + Ord> MinSegmentTree<T> {
+    /// 長さ `len` の区間最小値セグメント木を作る。
+    fn new(len: usize, e: T) -> Self {
+        Self(SegmentTree::new(min, len, e))
+    }
+
+    /// 配列 `a` から区間最小値セグメント木を作る。
+    fn from(a: Vec<T>, e: T) -> Self {
+        Self(SegmentTree::from(min, a, e))
+    }
+}
+impl<T> Deref for MinSegmentTree<T> {
+    type Target = SegmentTree<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<T> DerefMut for MinSegmentTree<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -667,6 +920,49 @@ fn main() {
     let mut wr = Writer::new();
 
     input!(
-        
+        n, q: usize,
+        a: [usize; n],
     );
+
+    let mut sgt: MaxSegmentTree<usize> = MaxSegmentTree::from(a, 0);
+
+    for _ in 0..q {
+        input!(
+            ti: usize,
+        );
+
+        match ti {
+            1 => {
+                input!(
+                    xi: usize1,
+                    vi: usize
+                );
+
+                sgt.apply(vi, xi);
+            }
+            2 => {
+                input!(
+                    li: usize1,
+                    ri: usize,
+                );
+
+                wr.println(sgt.get(li, ri));
+            }
+            3 => {
+                input!(
+                    xi: usize1,
+                    vi: usize,
+                );
+
+                wr.println(
+                    if vi == 0 {
+                        xi
+                    } else {
+                        sgt.max_right(xi, |mx| mx < vi)
+                    } + 1,
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
 }
