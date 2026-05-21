@@ -580,6 +580,70 @@ impl UnionFind {
 
 // =============================================
 
+struct SegmentTree<T> {
+    f: fn(T, T) -> T,
+    n: usize,
+    array: Vec<T>,
+    dv: T,
+}
+impl<T: Copy> SegmentTree<T> {
+    fn new(f: fn(T, T) -> T, n: usize, dv: T) -> Self {
+        Self {
+            f,
+            n,
+            array: vec![dv; 2 * n - 1],
+            dv,
+        }
+    }
+
+    fn from(f: fn(T, T) -> T, mut ary: Vec<T>, dv: T) -> Self {
+        let n: usize = ary.len().next_power_of_two();
+        let mut array: Vec<T> = vec![dv; 2 * n - 1];
+
+        for i in 0..ary.len() {
+            array[n - 1 + i] = ary[i];
+        }
+
+        for i in (0..n - 1).rev() {
+            array[i] = f(array[i * 2 + 1], array[i * 2 + 2]);
+        }
+
+        Self { f, n, array, dv }
+    }
+
+    fn apply(&mut self, v: T, mut idx: usize) {
+        idx += self.n - 1;
+        self.array[idx] = v;
+
+        while idx > 0 {
+            idx = (idx - 1) / 2;
+            self.array[idx] = (self.f)(self.array[idx * 2 + 1], self.array[idx * 2 + 2]);
+        }
+    }
+
+    fn get(&self, l: usize, r: usize) -> T {
+        self._get(l, r, 0, 0, self.n)
+    }
+
+    fn _get(&self, l: usize, r: usize, idx: usize, nl: usize, nr: usize) -> T {
+        if nr <= l || r <= nl {
+            return self.dv;
+        }
+
+        if l <= nl && nr <= r {
+            return self.array[idx];
+        }
+
+        let mid = (nl + nr) / 2;
+        let left = self._get(l, r, idx * 2 + 1, nl, mid);
+        let right = self._get(l, r, idx * 2 + 2, mid, nr);
+
+        (self.f)(left, right)
+    }
+}
+
+// =============================================
+
 fn is_valid_range(h: usize, w: usize, coord: (usize, usize)) -> bool {
     (0..h).contains(&coord.0) && (0..w).contains(&coord.1)
 }
