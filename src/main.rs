@@ -232,6 +232,9 @@ trait FastMath {
     fn fast_pow(self, n: Self) -> Self;
     fn mod_pow(self, n: Self, m: Self) -> Self;
     fn mod_inv(self, m: Self) -> Self;
+
+    fn gcd(self, rhs: Self) -> Self;
+    fn lcm(self, rhs: Self) -> Self;
 }
 macro_rules! impl_fast_math {
     ($($t:ty), *) => {
@@ -265,6 +268,27 @@ macro_rules! impl_fast_math {
 
                 fn mod_inv(self, m: Self) -> Self {
                     self.mod_pow(m-2, m)
+                }
+
+                fn gcd(self, rhs: Self) -> Self {
+                    let mut a = self;
+                    let mut b = rhs;
+
+                    while b != 0 {
+                        let r = a % b;
+                        a = b;
+                        b = r;
+                    }
+
+                    a
+                }
+
+                fn lcm(self, rhs: Self) -> Self {
+                    if self == 0 || rhs == 0 {
+                        0
+                    } else {
+                        self / self.gcd(rhs) * rhs
+                    }
                 }
             }
         )*
