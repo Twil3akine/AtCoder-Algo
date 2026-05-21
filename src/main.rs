@@ -521,11 +521,11 @@ impl<T: Ord + Clone> Compress<T> for [T] {
 
 // =============================================
 
-struct DSU {
+struct UnionFind {
     parents: Vec<isize>,
     group_count: usize,
 }
-impl DSU {
+impl UnionFind {
     fn new(n: usize) -> Self {
         Self {
             parents: vec![-1; n],
@@ -533,10 +533,9 @@ impl DSU {
         }
     }
 
-    //
     fn find(&mut self, x: usize) -> usize {
         if self.parents[x] < 0 {
-            return x;
+            x
         } else {
             let p = self.parents[x] as usize;
             let root = self.find(p);
