@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::f64::consts::PI;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Index};
 use std::{
     cmp::{max, min},
     io::*,
@@ -595,8 +595,6 @@ struct SegmentTree<T> {
     op: fn(T, T) -> T,
 
     /// 単位元。
-    ///
-    /// 区間外の値として使われる。
     e: T,
 
     /// 元の配列の長さ。
@@ -609,7 +607,8 @@ struct SegmentTree<T> {
 
     /// セグメント木の内部配列。
     ///
-    /// 0-indexed の完全二分木として管理する。
+    /// 1-indexed の完全二分木として管理する。
+    /// 根は `data[1]`、葉は `data[size + i]`。
     data: Vec<T>,
 }
 
@@ -619,36 +618,38 @@ impl<T: Copy> SegmentTree<T> {
     /// 初期値はすべて単位元 `e` になる。
     fn new(op: fn(T, T) -> T, len: usize, e: T) -> Self {
         let size = len.next_power_of_two();
+
         Self {
             op,
             e,
             len,
             size,
-            data: vec![e; 2 * size - 1],
+            data: vec![e; 2 * size],
         }
     }
 
     /// 配列 `ary` からセグメント木を構築する。
     ///
     /// 計算量は `O(N)`。
-    fn from(f: fn(T, T) -> T, ary: Vec<T>, e: T) -> Self {
-        let n: usize = ary.len().next_power_of_two();
-        let mut array: Vec<T> = vec![e; 2 * n - 1];
+    fn from(op: fn(T, T) -> T, ary: Vec<T>, e: T) -> Self {
+        let len = ary.len();
+        let size = len.next_power_of_two();
+        let mut data = vec![e; 2 * size];
 
-        for i in 0..ary.len() {
-            array[n - 1 + i] = ary[i];
+        for i in 0..len {
+            data[size + i] = ary[i];
         }
 
-        for i in (0..n - 1).rev() {
-            array[i] = f(array[i * 2 + 1], array[i * 2 + 2]);
+        for i in (1..size).rev() {
+            data[i] = op(data[i << 1], data[i << 1 | 1]);
         }
 
         Self {
-            op: f,
-            len: ary.len(),
-            size: n,
-            data: array,
+            op,
             e,
+            len,
+            size,
+            data,
         }
     }
 
@@ -656,98 +657,50 @@ impl<T: Copy> SegmentTree<T> {
     ///
     /// `idx` は 0-indexed。
     /// 計算量は `O(log N)`。
-    fn apply(&mut self, v: T, mut idx: usize) {
-        idx += self.size - 1;
+    fn apply(&mut self, mut idx: usize, v: T) {
+        idx += self.size;
         self.data[idx] = v;
 
-        while idx > 0 {
-            idx = (idx - 1) / 2;
-            self.data[idx] = (self.op)(self.data[idx * 2 + 1], self.data[idx * 2 + 2]);
+        while idx > 1 {
+            idx >>= 1;
+            self.data[idx] = (self.op)(self.data[idx << 1], self.data[idx << 1 | 1]);
         }
+    }
+
+    /// `idx` 番目の値を返す。
+    ///
+    /// `idx` は 0-indexed。
+    fn at(&self, idx: usize) -> T {
+        self.data[self.size + idx]
     }
 
     /// 半開区間 `[l, r)` の集約値を返す。
     ///
     /// `l`, `r` は 0-indexed。
     /// 計算量は `O(log N)`。
-    fn get(&self, l: usize, r: usize) -> T {
-        self._get(l, r, 0, 0, self.size)
-    }
+    fn get(&self, mut l: usize, mut r: usize) -> T {
+        l += self.size;
+        r += self.size;
 
-    /// `get` の内部実装。
-    ///
-    /// 現在見ているノード `idx` が区間 `[nl, nr)` を表す。
-    fn _get(&self, l: usize, r: usize, idx: usize, nl: usize, nr: usize) -> T {
-        if nr <= l || r <= nl {
-            return self.e;
+        let mut left = self.e;
+        let mut right = self.e;
+
+        while l < r {
+            if l & 1 == 1 {
+                left = (self.op)(left, self.data[l]);
+                l += 1;
+            }
+
+            if r & 1 == 1 {
+                r -= 1;
+                right = (self.op)(self.data[r], right);
+            }
+
+            l >>= 1;
+            r >>= 1;
         }
-
-        if l <= nl && nr <= r {
-            return self.data[idx];
-        }
-
-        let mid = (nl + nr) / 2;
-        let left = self._get(l, r, idx * 2 + 1, nl, mid);
-        let right = self._get(l, r, idx * 2 + 2, mid, nr);
 
         (self.op)(left, right)
-    }
-
-    /// `[l, r)` が条件 `pred` を満たす最小の `l` を探す。
-    ///
-    /// 右端 `r` を固定し、左方向に伸ばしていく。
-    /// AtCoder Library の `min_left` と同じ意味。
-    ///
-    /// `pred(e)` は `true` である必要がある。
-    fn min_left<F: Fn(T) -> bool>(&self, r: usize, pred: F) -> usize {
-        if r == 0 {
-            return 0;
-        }
-
-        let mut acc = self.e;
-
-        match self._min_left(r, &pred, &mut acc, 0, 0, self.size) {
-            Some(l) => l.min(self.len),
-            None => 0,
-        }
-    }
-
-    /// `min_left` の内部実装。
-    ///
-    /// 右側の子から先に探索し、条件が壊れる境界を探す。
-    fn _min_left<F: Fn(T) -> bool>(
-        &self,
-        r: usize,
-        pred: &F,
-        acc: &mut T,
-        idx: usize,
-        nl: usize,
-        nr: usize,
-    ) -> Option<usize> {
-        if r <= nl {
-            return None;
-        }
-
-        if nr <= r {
-            let next = (self.op)(self.data[idx], *acc);
-
-            if pred(next) {
-                *acc = next;
-                return None;
-            }
-
-            if nr - nl == 1 {
-                return Some(nr);
-            }
-        }
-
-        let mid = (nl + nr) / 2;
-
-        if let Some(ans) = self._min_left(r, pred, acc, idx * 2 + 2, mid, nr) {
-            return Some(ans);
-        }
-
-        self._min_left(r, pred, acc, idx * 2 + 1, nl, mid)
     }
 
     /// `[l, r)` が条件 `pred` を満たす最大の `r` を探す。
@@ -756,55 +709,110 @@ impl<T: Copy> SegmentTree<T> {
     /// AtCoder Library の `max_right` と同じ意味。
     ///
     /// `pred(e)` は `true` である必要がある。
-    fn max_right<F: Fn(T) -> bool>(&self, l: usize, pred: F) -> usize {
+    fn max_right<F>(&self, mut l: usize, pred: F) -> usize
+    where
+        F: Fn(T) -> bool,
+    {
+        assert!(l <= self.len);
+        assert!(pred(self.e));
+
         if l == self.len {
             return self.len;
         }
 
+        l += self.size;
         let mut acc = self.e;
 
-        match self._max_right(l, &pred, &mut acc, 0, 0, self.size) {
-            Some(r) => r.min(self.len),
-            None => self.len,
+        loop {
+            while l % 2 == 0 {
+                l >>= 1;
+            }
+
+            let next = (self.op)(acc, self.data[l]);
+
+            if !pred(next) {
+                while l < self.size {
+                    l <<= 1;
+                    let next = (self.op)(acc, self.data[l]);
+
+                    if pred(next) {
+                        acc = next;
+                        l += 1;
+                    }
+                }
+
+                return (l - self.size).min(self.len);
+            }
+
+            acc = next;
+            l += 1;
+
+            if l.is_power_of_two() {
+                break;
+            }
         }
+
+        self.len
     }
 
-    /// `max_right` の内部実装。
+    /// `[l, r)` が条件 `pred` を満たす最小の `l` を探す。
     ///
-    /// 左側の子から先に探索し、条件が壊れる境界を探す。
-    fn _max_right<F: Fn(T) -> bool>(
-        &self,
-        l: usize,
-        pred: &F,
-        acc: &mut T,
-        idx: usize,
-        nl: usize,
-        nr: usize,
-    ) -> Option<usize> {
-        if nr <= l {
-            return None;
+    /// 右端 `r` を固定し、左方向に伸ばしていく。
+    /// AtCoder Library の `min_left` と同じ意味。
+    ///
+    /// `pred(e)` は `true` である必要がある。
+    fn min_left<F>(&self, mut r: usize, pred: F) -> usize
+    where
+        F: Fn(T) -> bool,
+    {
+        assert!(r <= self.len);
+        assert!(pred(self.e));
+
+        if r == 0 {
+            return 0;
         }
 
-        if l <= nl {
-            let next = (self.op)(*acc, self.data[idx]);
+        r += self.size;
+        let mut acc = self.e;
 
-            if pred(next) {
-                *acc = next;
-                return None;
+        loop {
+            r -= 1;
+
+            while r > 1 && r % 2 == 1 {
+                r >>= 1;
             }
 
-            if nr - nl == 1 {
-                return Some(nl);
+            let next = (self.op)(self.data[r], acc);
+
+            if !pred(next) {
+                while r < self.size {
+                    r = r << 1 | 1;
+                    let next = (self.op)(self.data[r], acc);
+
+                    if pred(next) {
+                        acc = next;
+                        r -= 1;
+                    }
+                }
+
+                return (r | 1 - self.size).min(self.len);
+            }
+
+            acc = next;
+
+            if r.is_power_of_two() {
+                break;
             }
         }
 
-        let mid = (nl + nr) / 2;
+        0
+    }
+}
+impl<T> Index<usize> for SegmentTree<T> {
+    type Output = T;
 
-        if let Some(ans) = self._max_right(l, pred, acc, idx * 2 + 1, nl, mid) {
-            return Some(ans);
-        }
-
-        self._max_right(l, pred, acc, idx * 2 + 2, mid, nr)
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[self.size + index]
     }
 }
 
@@ -920,49 +928,8 @@ fn main() {
     let mut wr = Writer::new();
 
     input!(
-        n, q: usize,
-        a: [usize; n],
+        
     );
 
-    let mut sgt: MaxSegmentTree<usize> = MaxSegmentTree::from(a, 0);
-
-    for _ in 0..q {
-        input!(
-            ti: usize,
-        );
-
-        match ti {
-            1 => {
-                input!(
-                    xi: usize1,
-                    vi: usize
-                );
-
-                sgt.apply(vi, xi);
-            }
-            2 => {
-                input!(
-                    li: usize1,
-                    ri: usize,
-                );
-
-                wr.println(sgt.get(li, ri));
-            }
-            3 => {
-                input!(
-                    xi: usize1,
-                    vi: usize,
-                );
-
-                wr.println(
-                    if vi == 0 {
-                        xi
-                    } else {
-                        sgt.max_right(xi, |mx| mx < vi)
-                    } + 1,
-                );
-            }
-            _ => unreachable!(),
-        }
-    }
+    wr.println(ans);
 }
