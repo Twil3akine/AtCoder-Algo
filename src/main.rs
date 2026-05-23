@@ -1105,11 +1105,6 @@ fn main() {
     let mut wr = Writer::new();
 
     input!(
-        n: usize,
-        a: [usize; n],
+        
     );
-
-    let mut ans: usize = 0;
-
-    wr.println(ans);
 }
