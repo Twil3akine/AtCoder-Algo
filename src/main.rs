@@ -22,7 +22,9 @@ use itertools::Itertools;
 
 // =============================================
 
-// ローカル実行時(デバッグビルド)だけ eprintln! を実行
+/// ローカル実行時(デバッグビルド)だけ `eprintln!` を実行する。
+///
+/// 提出時のリリースビルドでは何も出力しないため、途中状態の確認に使える。
 macro_rules! debug {
     ($($arg:tt)*) => {
         #[cfg(debug_assertions)]
@@ -34,13 +36,21 @@ macro_rules! debug {
 // Scanner
 // =============================================
 
+/// 標準入力などの `BufRead` から空白区切りのトークンを高速に読み取る。
+///
+/// `token::<T>()` で任意の `FromStr` 実装型にパースする。
+/// AtCoder 形式の入力では、通常は `input!` マクロ経由で利用する。
 struct Scanner<R: BufRead> {
+    /// 入力元。
     reader: R,
+    /// 直近に読み込んだ1行分のバイト列。
     buf_str: Vec<u8>,
+    /// `buf_str` に対応する空白区切りイテレータ。
     buf_iter: std::str::SplitWhitespace<'static>,
 }
 
 impl<R: BufRead> Scanner<R> {
+    /// 任意の `BufRead` を入力元として `Scanner` を作る。
     fn with_reader(reader: R) -> Self {
         Self {
             reader,
@@ -49,6 +59,10 @@ impl<R: BufRead> Scanner<R> {
         }
     }
 
+    /// 次の空白区切りトークンを読み、型 `T` に変換して返す。
+    ///
+    /// 現在の行に未読トークンがない場合は次の行を読み込む。
+    /// パースに失敗した場合は panic する。
     fn token<T: std::str::FromStr>(&mut self) -> T {
         loop {
             if let Some(token) = self.buf_iter.next() {
@@ -82,6 +96,10 @@ thread_local! {
 // read_value! (input! の内部用)
 // =============================================
 
+/// `input!` の内部で使う値読み取りマクロ。
+///
+/// タプル、配列、`chars`、`usize1`、`isize1` などの競プロでよく使う
+/// 入力形式をまとめて扱う。
 macro_rules! read_value {
     // 1. タプル (例: (usize, i32, chars))
     ($sc:expr, ($($t:tt),*)) => {
@@ -118,6 +136,10 @@ macro_rules! read_value {
 // input! マクロ
 // =============================================
 
+/// グローバルな `Scanner` から変数を宣言しながら読み込む。
+///
+/// 例: `input!(n: usize, a: [i64; n], s: chars);`
+/// 同じ型の変数は `a, b: usize` のようにまとめて書ける。
 macro_rules! input {
     // 終端
     ($(,)?) => {};
@@ -139,12 +161,19 @@ macro_rules! input {
 // wprint! / wprintln! マクロ
 // =============================================
 
+/// グローバルな `BufWriter` に改行なしで出力する。
+///
+/// 標準の `print!` と同じ書式を受け取り、最後に `wflush()` でまとめて
+/// フラッシュする用途を想定している。
 macro_rules! wprint {
     ($($arg:tt)*) => {
         WR.with(|wr| write!(wr.borrow_mut(), $($arg)*).unwrap())
     };
 }
 
+/// グローバルな `BufWriter` に改行付きで出力する。
+///
+/// 標準の `println!` と同じ書式を受け取る。
 macro_rules! wprintln {
     // 引数なし (改行のみ)
     () => {
@@ -165,31 +194,42 @@ fn wflush() {
 // Writer (join 系など既存のメソッドはそのまま)
 // =============================================
 
+/// `Write` 先を `BufWriter` で包んだ出力ヘルパ。
+///
+/// `println`、Yes/No 出力、配列の join 出力をまとめて扱う。
+/// `Drop` 時に自動で flush される。
 struct Writer<W: Write> {
+    /// 実際のバッファ付き出力先。
     writer: BufWriter<W>,
 }
 
 impl<W: Write> Writer<W> {
+    /// 改行なしで1つの値を出力する。
     fn print<S: std::fmt::Display>(&mut self, s: S) {
         write!(self.writer, "{}", s).unwrap();
     }
 
+    /// 改行付きで1つの値を出力する。
     fn println<S: std::fmt::Display>(&mut self, s: S) {
         writeln!(self.writer, "{}", s).unwrap();
     }
 
+    /// 条件が true なら `Yes`、false なら `No` を出力する。
     fn print_yes_no(&mut self, cnd: bool) {
         self.println(if cnd { "Yes" } else { "No" });
     }
 
+    /// `Yes` を出力する。
     fn print_yes(&mut self) {
         self.print_yes_no(true);
     }
 
+    /// `No` を出力する。
     fn print_no(&mut self) {
         self.print_yes_no(false);
     }
 
+    /// イテレータの要素を区切り文字 `sep` で連結して1行に出力する。
     fn join<S: std::fmt::Display, I: IntoIterator<Item = S>>(&mut self, iter: I, sep: &str) {
         let mut it = iter.into_iter();
         if let Some(first) = it.next() {
@@ -202,20 +242,24 @@ impl<W: Write> Writer<W> {
         self.println("");
     }
 
+    /// イテレータの要素を区切りなしで1行に出力する。
     fn join_nospace<S: std::fmt::Display, I: IntoIterator<Item = S>>(&mut self, iter: I) {
         self.join(iter, "");
     }
 
+    /// イテレータの要素を空白区切りで1行に出力する。
     fn join_whitespace<S: std::fmt::Display, I: IntoIterator<Item = S>>(&mut self, iter: I) {
         self.join(iter, " ");
     }
 
+    /// イテレータの要素を改行区切りで出力する。
     fn join_line<S: std::fmt::Display, I: IntoIterator<Item = S>>(&mut self, iter: I) {
         self.join(iter, "\n");
     }
 }
 
 impl Writer<std::io::StdoutLock<'static>> {
+    /// 標準出力に書き込む `Writer` を作る。
     fn new() -> Self {
         Self {
             writer: BufWriter::new(stdout().lock()),
@@ -231,14 +275,35 @@ impl<W: Write> Drop for Writer<W> {
 
 // =============================================
 
+/// 整数型向けの競プロ用数値ユーティリティ。
+///
+/// 繰り返し二乗法、mod 累乗、mod 逆元、最大公約数、最小公倍数を提供する。
+/// `impl_fast_math!` によって主要な符号付き・符号なし整数型へ実装される。
 trait FastMath {
+    /// 繰り返し二乗法で `self.pow(n)` 相当を計算する。
+    ///
+    /// 計算量は `O(log n)`。
     fn fast_pow(self, n: Self) -> Self;
+    /// `self^n mod m` を繰り返し二乗法で計算する。
+    ///
+    /// 計算量は `O(log n)`。
     fn mod_pow(self, n: Self, m: Self) -> Self;
+    /// `mod m` における乗法逆元を返す。
+    ///
+    /// `m` が素数かつ `self` と互いに素である前提で、フェルマーの小定理により
+    /// `self^(m - 2) mod m` を計算する。
     fn mod_inv(self, m: Self) -> Self;
 
+    /// ユークリッドの互除法で最大公約数を返す。
     fn gcd(self, rhs: Self) -> Self;
+    /// 最大公約数を使って最小公倍数を返す。
+    ///
+    /// どちらかが 0 の場合は 0 を返す。
     fn lcm(self, rhs: Self) -> Self;
 }
+/// 指定した整数型へ `FastMath` を実装する。
+///
+/// 競プロでよく使う `i64` / `usize` などに同じ実装をまとめて展開する。
 macro_rules! impl_fast_math {
     ($($t:ty), *) => {
         $(
@@ -302,34 +367,48 @@ impl_fast_math!(i32, i64, isize, u32, u64, usize);
 
 // =============================================
 
+/// 最大値を優先して取り出すヒープ。
+///
+/// 標準ライブラリの `BinaryHeap` そのものの別名。
 pub type MaxHeap<T> = BinaryHeap<T>;
 
+/// 最小値を優先して取り出すヒープ。
+///
+/// 内部では `Reverse<T>` を使って `BinaryHeap` の順序を反転している。
+/// `push` / `pop` / `peek` はすべて標準のヒープ操作と同じ計算量になる。
 #[derive(Debug, Clone)]
 pub struct MinHeap<T>(BinaryHeap<Reverse<T>>);
 impl<T: Ord> MinHeap<T> {
+    /// 空の最小ヒープを作る。
     pub fn new() -> Self {
         Self(BinaryHeap::new())
     }
 
-    /// 要素の追加
+    /// 要素を追加する。
     pub fn push(&mut self, item: T) {
         self.0.push(Reverse(item));
     }
 
-    /// 最小の要素を取り出す
+    /// 最小の要素を取り出す。
+    ///
+    /// 空の場合は `None` を返す。
     pub fn pop(&mut self) -> Option<T> {
         self.0.pop().map(|Reverse(v)| v)
     }
 
-    /// 最小の要素の参照を返す
-    pub fn peek(&mut self) -> Option<&T> {
+    /// 最小の要素の参照を返す。
+    ///
+    /// 空の場合は `None` を返す。
+    pub fn peek(&self) -> Option<&T> {
         self.0.peek().map(|Reverse(v)| v)
     }
 
+    /// 現在ヒープに入っている要素数を返す。
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// ヒープが空なら `true` を返す。
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -337,16 +416,25 @@ impl<T: Ord> MinHeap<T> {
 
 // =============================================
 
+/// 軽量な Xorshift 乱数生成器。
+///
+/// 競プロのランダムテストやヒューリスティックで使うための簡易 PRNG。
+/// 暗号用途には使わない。
 struct Xorshift {
+    /// 現在の内部状態。
     seed: u64,
 }
 impl Xorshift {
+    /// 初期シードを指定して乱数生成器を作る。
+    ///
+    /// `seed == 0` の場合は固定の非ゼロ値に置き換える。
     fn new(seed: u64) -> Self {
         Xorshift {
             seed: if seed == 0 { 88172645463325252 } else { seed },
         }
     }
 
+    /// 次の `u64` 乱数を返し、内部状態を更新する。
     fn next(&mut self) -> u64 {
         self.seed ^= self.seed << 13;
         self.seed ^= self.seed >> 7;
@@ -354,12 +442,14 @@ impl Xorshift {
         self.seed
     }
 
-    // min 以上 max 以下の乱数を返す (usize用)
+    /// `min` 以上 `max` 以下の `usize` 乱数を返す。
+    ///
+    /// `min <= max` である必要がある。
     fn next_range(&mut self, min: usize, max: usize) -> usize {
         min + (self.next() as usize % (max - min + 1))
     }
 
-    // 0.0 以上 1.0 未満の乱数を返す
+    /// `0.0` 以上 `1.0` 未満の `f64` 乱数を返す。
     fn next_f64(&mut self) -> f64 {
         self.next() as f64 / u64::MAX as f64
     }
@@ -367,16 +457,22 @@ impl Xorshift {
 
 // =============================================
 
+/// 実行時間を測るための簡易タイマー。
+///
+/// `new()` した時刻からの経過秒数を `get_times()` で取得する。
 struct Timer {
+    /// 計測開始時刻。
     start: Instant,
 }
 impl Timer {
+    /// 現在時刻を開始時刻としてタイマーを作る。
     fn new() -> Self {
         Timer {
             start: Instant::now(),
         }
     }
 
+    /// 開始時刻からの経過秒数を `f64` で返す。
     fn get_times(&self) -> f64 {
         self.start.elapsed().as_secs_f64()
     }
@@ -384,11 +480,17 @@ impl Timer {
 
 // =============================================
 
+/// 法 `MOD` 上の整数を扱う構造体。
+///
+/// 値は常に `0 <= val < MOD` に正規化される。
+/// `+`, `-`, `*`, `/` と各種代入演算子を mod 上の演算として使える。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct ModInt<const MOD: i64> {
+    /// 正規化済みの値。
     val: i64,
 }
 impl<const MOD: i64> ModInt<MOD> {
+    /// 任意の整数 `val` を `mod MOD` に正規化して作る。
     fn new(mut val: i64) -> Self {
         val %= MOD;
         if val < 0 {
@@ -397,14 +499,21 @@ impl<const MOD: i64> ModInt<MOD> {
         Self { val }
     }
 
+    /// 内部の正規化済み値を返す。
     fn val(&self) -> i64 {
         self.val
     }
 
+    /// 乗法逆元を返す。
+    ///
+    /// `MOD` が素数で、値が `MOD` と互いに素である前提で `pow(MOD - 2)` を使う。
     fn inv(&self) -> Self {
         self.pow(MOD - 2)
     }
 
+    /// 繰り返し二乗法で `self^exp` を計算する。
+    ///
+    /// 計算量は `O(log exp)`。
     fn pow(&self, mut exp: i64) -> Self {
         let mut res = 1;
         let mut base = self.val;
@@ -465,20 +574,29 @@ impl<const MOD: i64> DivAssign for ModInt<MOD> {
     }
 }
 
+/// AtCoder でよく使う法 `998244353` の `ModInt`。
 type Mod998 = ModInt<998_244_353>;
+/// AtCoder でよく使う法 `1000000007` の `ModInt`。
 type Mod107 = ModInt<1_000_000_007>;
 
 // =============================================
 
+/// 英字を `0..26` の添字に変換する拡張トレイト。
+///
+/// `a` / `A` を 0、`b` / `B` を 1 のように扱う。
+/// `char` と `u8` に実装している。
 trait AlphaExt {
+    /// アルファベットを 0-indexed の添字に変換する。
     fn to_idx(self) -> usize;
 }
 impl AlphaExt for char {
+    /// `char` を小文字化して `a` からの距離に変換する。
     fn to_idx(self) -> usize {
         (self.to_ascii_lowercase() as u8 - b'a') as usize
     }
 }
 impl AlphaExt for u8 {
+    /// ASCII バイトを小文字化して `b'a'` からの距離に変換する。
     fn to_idx(self) -> usize {
         (self.to_ascii_lowercase() - b'a') as usize
     }
@@ -486,16 +604,24 @@ impl AlphaExt for u8 {
 
 // =============================================
 
+/// スライスを降順に並べるための拡張トレイト。
+///
+/// 標準の昇順 `sort` / `sort_unstable` に対して、比較順を反転した
+/// 降順ソートを短く書けるようにする。
 pub trait SortReverse {
+    /// スライスを降順に安定ソートする。
     fn sort_reverse(&mut self);
+    /// スライスを降順に非安定ソートする。
     fn sort_unstable_reverse(&mut self);
 }
 
 impl<T: Ord> SortReverse for [T] {
+    /// `sort_by` で比較順を反転して降順に並べる。
     fn sort_reverse(&mut self) {
         self.sort_by(|a, b| b.cmp(a));
     }
 
+    /// `sort_unstable_by` で比較順を反転して降順に並べる。
     fn sort_unstable_reverse(&mut self) {
         self.sort_unstable_by(|a, b| b.cmp(a));
     }
@@ -503,11 +629,20 @@ impl<T: Ord> SortReverse for [T] {
 
 // =============================================
 
+/// スライスを座標圧縮する拡張トレイト。
+///
+/// 元の値の大小関係を保ったまま、各値を `0..k` の連番に変換する。
 trait Compress<T> {
-    // 座圧後の配列と元の値のタプル
+    /// 座圧後の配列と、添字から元の値へ戻すための値一覧を返す。
+    ///
+    /// 戻り値 `(compressed, vals)` について、`compressed[i]` は `self[i]` の圧縮後の値、
+    /// `vals[j]` は圧縮後の値 `j` に対応する元の値。
     fn compressed(&self) -> (Vec<usize>, Vec<T>);
 }
 impl<T: Ord + Clone> Compress<T> for [T] {
+    /// ソート済み重複除去配列に対して二分探索し、各要素の圧縮後添字を求める。
+    ///
+    /// 計算量は `O(N log N)`。
     fn compressed(&self) -> (Vec<usize>, Vec<T>) {
         let mut vals = self.to_vec();
         vals.sort_unstable();
@@ -524,11 +659,20 @@ impl<T: Ord + Clone> Compress<T> for [T] {
 
 // =============================================
 
+/// 素集合データ構造 Disjoint Set Union。
+///
+/// 集合の併合、同一集合判定、集合サイズ取得をほぼ定数時間で行う。
+/// 経路圧縮とサイズによる併合を使う。
 struct UnionFind {
+    /// 各頂点の親または集合サイズを表す配列。
+    ///
+    /// 根では負の集合サイズ、非根では親の添字を保持する。
     parents: Vec<isize>,
+    /// 現在の連結成分数。
     group_count: usize,
 }
 impl UnionFind {
+    /// `0..n` の各要素が独立した集合である状態を作る。
     fn new(n: usize) -> Self {
         Self {
             parents: vec![-1; n],
@@ -536,6 +680,9 @@ impl UnionFind {
         }
     }
 
+    /// `x` が属する集合の代表元を返す。
+    ///
+    /// 経路圧縮により、以後の探索が速くなる。
     fn find(&mut self, x: usize) -> usize {
         if self.parents[x] < 0 {
             x
@@ -547,6 +694,9 @@ impl UnionFind {
         }
     }
 
+    /// `x` と `y` の集合を併合する。
+    ///
+    /// すでに同じ集合なら `false`、新しく併合したなら `true` を返す。
     fn merge(&mut self, x: usize, y: usize) -> bool {
         let mut root_x = self.find(x);
         let mut root_y = self.find(y);
@@ -567,15 +717,18 @@ impl UnionFind {
         true
     }
 
+    /// `x` と `y` が同じ集合に属しているかを返す。
     fn same(&mut self, x: usize, y: usize) -> bool {
         self.find(x) == self.find(y)
     }
 
+    /// `x` が属する集合のサイズを返す。
     fn size(&mut self, x: usize) -> usize {
         let root = self.find(x);
         (-self.parents[root]) as usize
     }
 
+    /// 現在の集合数を返す。
     fn group_count(&self) -> usize {
         self.group_count
     }
@@ -797,7 +950,7 @@ impl<T: Copy> SegmentTree<T> {
                     }
                 }
 
-                return (r | 1 - self.size).min(self.len);
+                return (r + 1 - self.size).min(self.len);
             }
 
             acc = next;
@@ -923,12 +1076,18 @@ impl<T> DerefMut for MinSegmentTree<T> {
 
 // =============================================
 
+/// 2次元グリッド上の座標が範囲内かを判定する。
+///
+/// `coord = (row, col)` が `0 <= row < h` かつ `0 <= col < w` なら `true`。
 fn is_valid_range(h: usize, w: usize, coord: (usize, usize)) -> bool {
     (0..h).contains(&coord.0) && (0..w).contains(&coord.1)
 }
 
 // =============================================
 
+/// 8近傍の移動方向。
+///
+/// 順に右、上、左、下、右上、左上、左下、右下を表す。
 const DIRECTIONS: [(isize, isize); 8] = [
     (0, 1),
     (-1, 0),
@@ -949,6 +1108,8 @@ fn main() {
         n: usize,
         a: [usize; n],
     );
+
+    let mut ans: usize = 0;
 
     wr.println(ans);
 }
