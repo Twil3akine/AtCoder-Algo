@@ -5,7 +5,9 @@ use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::f64::consts::PI;
-use std::ops::{Deref, DerefMut, Index};
+use std::fmt::Debug;
+use std::iter::StepBy;
+use std::ops::{Deref, DerefMut, Index, RangeFrom};
 use std::{
     cmp::{max, min},
     io::*,
@@ -815,6 +817,22 @@ impl<T> Index<usize> for SegmentTree<T> {
         &self.data[self.size + index]
     }
 }
+impl<T: Copy + Debug> SegmentTree<T> {
+    /// 元配列部分 `[0, len)` だけを表示する。
+    fn debug_values(&self) {
+        debug!("{:?}", &self.data[self.size..self.size + self.len]);
+    }
+
+    /// 元配列部分 `[l, r)` だけを表示する。
+    fn debug_range(&self, l: usize, r: usize) {
+        debug!("{:?}", &self.data[self.size + l..self.size + r]);
+    }
+
+    /// 内部木全体を表示する。
+    fn debug_tree(&self) {
+        debug!("{:?}", self.data);
+    }
+}
 
 /// 区間和用セグメント木。
 ///
@@ -928,7 +946,8 @@ fn main() {
     let mut wr = Writer::new();
 
     input!(
-        
+        n: usize,
+        a: [usize; n],
     );
 
     wr.println(ans);
