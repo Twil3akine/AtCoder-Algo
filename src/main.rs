@@ -141,18 +141,25 @@ macro_rules! read_value {
 /// 例: `input!(n: usize, a: [i64; n], s: chars);`
 /// 同じ型の変数は `a, b: usize` のようにまとめて書ける。
 macro_rules! input {
-    // 終端
     ($(,)?) => {};
 
-    // mut 変数 (複数対応: mut a, b: usize)
     (mut $($var:ident),+ : $t:tt $(, $($rest:tt)*)?) => {
-        $( let mut $var = SC.with(|sc| read_value!(sc.borrow_mut(), $t)); )+
+        $(
+            let mut $var = SC.with(|sc| {
+                let mut sc = sc.borrow_mut();
+                read_value!(&mut *sc, $t)
+            });
+        )+
         $(input!($($rest)*);)?
     };
 
-    // 通常変数 (複数対応: a, b: usize)
     ($($var:ident),+ : $t:tt $(, $($rest:tt)*)?) => {
-        $( let $var = SC.with(|sc| read_value!(sc.borrow_mut(), $t)); )+
+        $(
+            let $var = SC.with(|sc| {
+                let mut sc = sc.borrow_mut();
+                read_value!(&mut *sc, $t)
+            });
+        )+
         $(input!($($rest)*);)?
     };
 }
