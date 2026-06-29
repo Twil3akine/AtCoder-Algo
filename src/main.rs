@@ -857,7 +857,6 @@ impl<T: Copy> SegmentTree<T> {
     /// `[l, r)` が条件 `pred` を満たす最大の `r` を探す。
     ///
     /// 左端 `l` を固定し、右方向に伸ばしていく。
-    /// AtCoder Library の `max_right` と同じ意味。
     ///
     /// `pred(e)` は `true` である必要がある。
     fn max_right<F>(&self, mut l: usize, pred: F) -> usize
@@ -909,7 +908,6 @@ impl<T: Copy> SegmentTree<T> {
     /// `[l, r)` が条件 `pred` を満たす最小の `l` を探す。
     ///
     /// 右端 `r` を固定し、左方向に伸ばしていく。
-    /// AtCoder Library の `min_left` と同じ意味。
     ///
     /// `pred(e)` は `true` である必要がある。
     fn min_left<F>(&self, mut r: usize, pred: F) -> usize
@@ -985,96 +983,269 @@ impl<T: Copy + Debug> SegmentTree<T> {
     }
 }
 
-/// 区間和用セグメント木。
+// =============================================
+
+/// 汎用双対セグメント木。
 ///
-/// `op = +` を使う。
-struct SumSegmentTree<T>(SegmentTree<T>);
-
-impl<T: Copy + Add<Output = T>> SumSegmentTree<T> {
-    /// 長さ `len` の区間和セグメント木を作る。
-    fn new(len: usize, e: T) -> Self {
-        Self(SegmentTree::new(|x, y| x + y, len, e))
-    }
-
-    /// 配列 `a` から区間和セグメント木を作る。
-    fn from(a: Vec<T>, e: T) -> Self {
-        Self(SegmentTree::from(|x, y| x + y, a, e))
-    }
-}
-
-impl<T> Deref for SumSegmentTree<T> {
-    type Target = SegmentTree<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for SumSegmentTree<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-/// 区間最大値用セグメント木。
+/// `op` に操作の合成、`e` に単位元を渡して使う。
+/// 区間更新は半開区間 `[l, r)` で行う。
 ///
-/// `op = max` を使う。
-struct MaxSegmentTree<T>(SegmentTree<T>);
+/// `op(a, b)` は「操作 a の後に操作 b を行う」という意味。
+struct DualSegmentTree<T> {
+    /// 2つの操作を合成する演算。
+    op: fn(T, T) -> T,
 
-impl<T: Copy + Ord> MaxSegmentTree<T> {
-    /// 長さ `len` の区間最大値セグメント木を作る。
-    fn new(len: usize, e: T) -> Self {
-        Self(SegmentTree::new(max, len, e))
+    /// 単位元。
+    e: T,
+
+    /// 元の配列の長さ。
+    len: usize,
+
+    /// セグメント木内部で使う葉の数。
+    size: usize,
+
+    /// 木の高さ。
+    log: usize,
+
+    /// 遅延値を持つ配列。
+    ///
+    /// 1-indexed の完全二分木として管理する。
+    data: Vec<T>,
+}
+
+impl<T: Copy> DualSegmentTree<T> {
+    /// 長さ `len` の双対セグメント木を作る。
+    ///
+    /// 初期値はすべて単位元 `e` になる。
+    fn new(op: fn(T, T) -> T, len: usize, e: T) -> Self {
+        let size = len.next_power_of_two().max(1);
+        let log = size.trailing_zeros() as usize;
+
+        Self {
+            op,
+            e,
+            len,
+            size,
+            log,
+            data: vec![e; 2 * size],
+        }
     }
 
-    /// 配列 `a` から区間最大値セグメント木を作る。
-    fn from(a: Vec<T>, e: T) -> Self {
-        Self(SegmentTree::from(max, a, e))
+    /// 配列 `ary` から双対セグメント木を構築する。
+    fn from(op: fn(T, T) -> T, ary: Vec<T>, e: T) -> Self {
+        let len = ary.len();
+        let size = len.next_power_of_two().max(1);
+        let log = size.trailing_zeros() as usize;
+        let mut data = vec![e; 2 * size];
+
+        for i in 0..len {
+            data[size + i] = ary[i];
+        }
+
+        Self {
+            op,
+            e,
+            len,
+            size,
+            log,
+            data,
+        }
+    }
+
+    /// ノード `idx` に操作 `v` を合成する。
+    fn all_apply(&mut self, idx: usize, v: T) {
+        self.data[idx] = (self.op)(self.data[idx], v);
+    }
+
+    /// ノード `idx` の遅延値を子に降ろす。
+    fn push(&mut self, idx: usize) {
+        let v = self.data[idx];
+
+        self.all_apply(idx << 1, v);
+        self.all_apply(idx << 1 | 1, v);
+
+        self.data[idx] = self.e;
+    }
+
+    /// `idx` に向かう経路上の遅延値を下に降ろす。
+    fn push_path(&mut self, idx: usize) {
+        let idx = idx + self.size;
+
+        for h in (1..=self.log).rev() {
+            self.push(idx >> h);
+        }
+    }
+
+    /// 半開区間 `[l, r)` に操作 `v` を適用する。
+    ///
+    /// `l`, `r` は 0-indexed。
+    /// 計算量は `O(log N)`。
+    fn apply(&mut self, mut l: usize, mut r: usize, v: T) {
+        assert!(l <= r);
+        assert!(r <= self.len);
+
+        if l == r {
+            return;
+        }
+
+        self.push_path(l);
+        self.push_path(r - 1);
+
+        l += self.size;
+        r += self.size;
+
+        while l < r {
+            if l & 1 == 1 {
+                self.all_apply(l, v);
+                l += 1;
+            }
+
+            if r & 1 == 1 {
+                r -= 1;
+                self.all_apply(r, v);
+            }
+
+            l >>= 1;
+            r >>= 1;
+        }
+    }
+
+    /// `idx` 番目の値を返す。
+    ///
+    /// `idx` は 0-indexed。
+    /// 計算量は `O(log N)`。
+    fn at(&self, mut idx: usize) -> T {
+        assert!(idx < self.len);
+
+        idx += self.size;
+
+        let mut acc = self.e;
+
+        while idx > 0 {
+            acc = (self.op)(acc, self.data[idx]);
+            idx >>= 1;
+        }
+
+        acc
     }
 }
 
-impl<T> Deref for MaxSegmentTree<T> {
-    type Target = SegmentTree<T>;
+// =============================================
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for MaxSegmentTree<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-/// 区間最小値用セグメント木。
+/// 2次元双対セグメント木。
 ///
-/// `op = min` を使う。
-struct MinSegmentTree<T>(SegmentTree<T>);
-
-impl<T: Copy + Ord> MinSegmentTree<T> {
-    /// 長さ `len` の区間最小値セグメント木を作る。
-    fn new(len: usize, e: T) -> Self {
-        Self(SegmentTree::new(min, len, e))
-    }
-
-    /// 配列 `a` から区間最小値セグメント木を作る。
-    fn from(a: Vec<T>, e: T) -> Self {
-        Self(SegmentTree::from(min, a, e))
-    }
+/// 矩形 `[u, d) x [l, r)` に更新をかけ、点 `(i, j)` の値を取得する。
+///
+/// 加算・max・min など、合成順を気にしなくてよい演算向け。
+struct DualSegmentTree2D<T> {
+    op: fn(T, T) -> T,
+    e: T,
+    h: usize,
+    w: usize,
+    size_h: usize,
+    size_w: usize,
+    data: Vec<T>,
 }
 
-impl<T> Deref for MinSegmentTree<T> {
-    type Target = SegmentTree<T>;
+impl<T: Copy> DualSegmentTree2D<T> {
+    /// `h x w` の2次元双対セグメント木を作る。
+    fn new(h: usize, w: usize, op: fn(T, T) -> T, e: T) -> Self {
+        let size_h = h.next_power_of_two();
+        let size_w = w.next_power_of_two();
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+        Self {
+            op,
+            e,
+            h,
+            w,
+            size_h,
+            size_w,
+            data: vec![e; 4 * size_h * size_w],
+        }
     }
-}
 
-impl<T> DerefMut for MinSegmentTree<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    /// 2次元配列上の添字を1次元に潰す。
+    fn id(&self, x: usize, y: usize) -> usize {
+        x * (2 * self.size_w) + y
+    }
+
+    /// 1次元区間 `[l, r)` をセグ木上のノード集合に分解する。
+    fn range_nodes(mut l: usize, mut r: usize, size: usize) -> Vec<usize> {
+        l += size;
+        r += size;
+
+        let mut nodes = Vec::new();
+
+        while l < r {
+            if l & 1 == 1 {
+                nodes.push(l);
+                l += 1;
+            }
+
+            if r & 1 == 1 {
+                r -= 1;
+                nodes.push(r);
+            }
+
+            l >>= 1;
+            r >>= 1;
+        }
+
+        nodes
+    }
+
+    /// 矩形 `[u, d) x [l, r)` に `v` を適用する。
+    ///
+    /// 計算量: `O(log H log W)`
+    fn apply(&mut self, u: usize, d: usize, l: usize, r: usize, v: T) {
+        assert!(u <= d && d <= self.h);
+        assert!(l <= r && r <= self.w);
+
+        if u == d || l == r {
+            return;
+        }
+
+        let xs = Self::range_nodes(u, d, self.size_h);
+        let ys = Self::range_nodes(l, r, self.size_w);
+
+        for x in xs {
+            for &y in &ys {
+                let idx = self.id(x, y);
+                self.data[idx] = (self.op)(self.data[idx], v);
+            }
+        }
+    }
+
+    /// 点 `(i, j)` の値を返す。
+    ///
+    /// 計算量: `O(log H log W)`
+    fn at(&self, i: usize, j: usize) -> T {
+        assert!(i < self.h);
+        assert!(j < self.w);
+
+        let mut xs = Vec::new();
+        let mut x = i + self.size_h;
+        while x > 0 {
+            xs.push(x);
+            x >>= 1;
+        }
+
+        let mut ys = Vec::new();
+        let mut y = j + self.size_w;
+        while y > 0 {
+            ys.push(y);
+            y >>= 1;
+        }
+
+        let mut res = self.e;
+
+        for &x in &xs {
+            for &y in &ys {
+                res = (self.op)(res, self.data[self.id(x, y)]);
+            }
+        }
+
+        res
     }
 }
 
