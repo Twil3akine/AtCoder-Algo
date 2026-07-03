@@ -1,3 +1,5 @@
+import functools as ft
+import itertools as it
 import math as mt
 import sys
 
@@ -29,30 +31,6 @@ _write = sys.stdout.write
 
 def print(*args, sep=" ", end="\n"):
     _write(sep.join(map(str, args)) + end)
-
-
-def I():
-    return input().rstrip("\n")
-
-
-def II():
-    return int(input())
-
-
-def II1():
-    return int(input()) - 1
-
-
-def IS():
-    return input().split()
-
-
-def MII():
-    return map(int, input().split())
-
-
-def MII1():
-    return (int(x) - 1 for x in input().split())
 
 
 if __name__ == "__main__":
