@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Codeforces Userscript Fixture</title>
+  </head>
+  <body>
+    <output id="fixture-clipboard" aria-label="Clipboard contents"></output>
+    <script>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          async writeText(value) {
+            const clipboard = document.querySelector("#fixture-clipboard");
+            clipboard.textContent = value;
+            clipboard.dataset.value = value;
+          },
+        },
+      });
+    </script>
+    <nav><a href="https://codeforces.com/contest/4/submit">Submit</a></nav>
+    <div class="problem-statement">
+      <div class="title">A. Watermelon</div>
+      <div class="sample-test">
+        <div class="input"><div class="title">Input</div><pre>8<br></pre></div>
+        <div class="output"><div class="title">Output</div><pre>YES<br></pre></div>
+      </div>
+    </div>
+    <script src="/userscripts/codeforces-local-runner.user.js?v=2"></script>
+  </body>
+</html>
