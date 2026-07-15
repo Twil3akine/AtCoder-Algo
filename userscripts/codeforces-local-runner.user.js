@@ -1,12 +1,16 @@
 // ==UserScript==
 // @name         Codeforces Local Runner
 // @namespace    https://github.com/Twil3akine/AtCoder-Algo
-// @version      0.1.0
-// @description  Codeforcesの問題ページでサンプルとカスタムテストをローカル実行します。
+// @version      0.2.0
+// @description  Codeforcesの問題ページでサンプルをローカル実行し、全AC時に自動提出します。
 // @match        https://codeforces.com/problemset/problem/*/*
+// @match        https://codeforces.com/problemset/submit*
 // @match        https://codeforces.com/contest/*/problem/*
+// @match        https://codeforces.com/contest/*/submit
 // @match        https://codeforces.com/gym/*/problem/*
+// @match        https://codeforces.com/gym/*/submit
 // @match        https://codeforces.com/group/*/contest/*/problem/*
+// @match        https://codeforces.com/group/*/contest/*/submit
 // @grant        GM_xmlhttpRequest
 // @connect      127.0.0.1
 // @run-at       document-idle
@@ -17,6 +21,7 @@
 
   const RUNNER_URL = "http://127.0.0.1:4000";
   const STORAGE_PREFIX = "atcoder-algo:codeforces";
+  const PENDING_SUBMISSION_KEY = `${STORAGE_PREFIX}:pending-submission`;
   const LANGUAGES = {
     rust: {
       label: "Rust",
@@ -34,6 +39,11 @@
       template: "def main():\n    pass\n\n\nif __name__ == \"__main__\":\n    main()\n",
     },
   };
+
+  if (isSubmitLocation(location.pathname)) {
+    submitPendingSolution();
+    return;
+  }
 
   const problem = parseProblemLocation(location.pathname);
   const statement = document.querySelector(".problem-statement");
@@ -150,12 +160,16 @@
 
     setBusy(true);
     try {
+      let allAccepted = true;
       for (let index = 0; index < samples.length; index += 1) {
         const sample = samples[index];
         const result = await runSource(sample.input);
-        sampleResults.append(renderSampleResult(index + 1, sample, result));
+        const verdict = sampleVerdict(sample, result);
+        sampleResults.append(renderSampleResult(index + 1, sample, result, verdict));
+        if (verdict !== "AC") allAccepted = false;
         if (result.status === "compileError" || result.status === "internalError") break;
       }
+      if (allAccepted) submitSolution();
     } catch (_) {
       showRunnerUnavailable();
     } finally {
@@ -190,16 +204,16 @@
     });
   }
 
-  function renderSampleResult(number, sample, result) {
+  function sampleVerdict(sample, result) {
     const normalizedExpected = normalizeOutput(sample.expected);
     const normalizedActual = normalizeOutput(result.stdout || "");
-    let verdict;
     if (result.status === "ok") {
-      verdict = normalizedExpected === normalizedActual ? "AC" : "WA";
-    } else {
-      verdict = statusVerdict(result.status);
+      return normalizedExpected === normalizedActual ? "AC" : "WA";
     }
+    return statusVerdict(result.status);
+  }
 
+  function renderSampleResult(number, sample, result, verdict) {
     const card = resultCard(`Sample ${number}`, verdict);
     appendMeta(card, result);
     if (verdict === "WA") {
@@ -322,6 +336,94 @@
     link.href = existing?.href || `https://codeforces.com/contest/${problemInfo.contestId}/submit`;
   }
 
+  function submitSolution() {
+    saveCode(selectedLanguage, codeEditor.value);
+    localStorage.setItem(
+      PENDING_SUBMISSION_KEY,
+      JSON.stringify({
+        contestId: problem.contestId,
+        problemIndex: problem.index,
+        language: selectedLanguage,
+        sourceCode: codeEditor.value,
+      }),
+    );
+    location.assign(root.querySelector("#cf-lr-submit").href);
+  }
+
+  function submitPendingSolution() {
+    const raw = localStorage.getItem(PENDING_SUBMISSION_KEY);
+    if (!raw) return;
+
+    let pending;
+    try {
+      pending = JSON.parse(raw);
+    } catch (_) {
+      localStorage.removeItem(PENDING_SUBMISSION_KEY);
+      return;
+    }
+
+    const form = document.querySelector('form.submit-form, form[action*="/submit"]');
+    const source = form?.querySelector('textarea[name="source"], textarea[name="sourceCode"]');
+    const language = form?.querySelector('select[name="programTypeId"]');
+    if (!form || !source || !language) return;
+
+    setFormValue(source, pending.sourceCode);
+    if (!selectSubmissionLanguage(language, pending.language)) return;
+    if (!setSubmissionProblem(form, pending.contestId, pending.problemIndex)) return;
+
+    localStorage.removeItem(PENDING_SUBMISSION_KEY);
+    const submit = form.querySelector('button[type="submit"], input[type="submit"]');
+    if (typeof form.requestSubmit === "function") form.requestSubmit(submit || undefined);
+    else if (submit) submit.click();
+    else form.submit();
+  }
+
+  function setSubmissionProblem(form, contestId, problemIndex) {
+    const index = form.querySelector('select[name="submittedProblemIndex"]');
+    if (index) {
+      const option = [...index.options].find(
+        (candidate) =>
+          candidate.value.toUpperCase() === problemIndex.toUpperCase() ||
+          candidate.textContent.trim().toUpperCase().startsWith(problemIndex.toUpperCase()),
+      );
+      if (!option) return false;
+      setFormValue(index, option.value);
+      return true;
+    }
+
+    const code = form.querySelector('input[name="submittedProblemCode"]');
+    if (!code) return false;
+    setFormValue(code, `${contestId}${problemIndex}`);
+    return true;
+  }
+
+  function selectSubmissionLanguage(select, language) {
+    const patterns = {
+      rust: [/rust/i],
+      python: [/python\s*3/i, /python/i],
+      pypy: [/pypy\s*3/i, /pypy/i],
+    }[language];
+    if (!patterns) return false;
+
+    const option = patterns
+      .map((pattern) =>
+        [...select.options].find((candidate) => {
+          const label = candidate.textContent.trim();
+          return pattern.test(label) && (language !== "python" || !/pypy/i.test(label));
+        }),
+      )
+      .find(Boolean);
+    if (!option) return false;
+    setFormValue(select, option.value);
+    return true;
+  }
+
+  function setFormValue(field, value) {
+    field.value = value;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
   function requestJson(method, path, body) {
     const url = `${RUNNER_URL}${path}`;
     if (typeof GM_xmlhttpRequest === "function") {
@@ -369,6 +471,12 @@
       if (match) return { contestId: match[1], index: match[2] };
     }
     return null;
+  }
+
+  function isSubmitLocation(pathname) {
+    return /\/(?:problemset\/submit|(?:contest|gym)\/\d+\/submit|group\/[^/]+\/contest\/\d+\/submit)\/?$/.test(
+      pathname,
+    );
   }
 
   function installStyles() {
