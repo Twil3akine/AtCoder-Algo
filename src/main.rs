@@ -658,6 +658,57 @@ impl<T: Ord + Clone> Compress<T> for [T] {
 
 // =============================================
 
+/// イテレータに対してランレングス圧縮を行う拡張トレイト。
+///
+/// 連続する同一の要素をまとめ、要素とその連続回数の組に変換します。
+pub trait RleExt: Iterator {
+    /// イテレータを消費し、`(要素, 連続した数)` の配列を返します。
+    ///
+    /// 戻り値 `Vec<(Self::Item, usize)>` について、タプルの第1要素は元の値、
+    /// 第2要素はその値が連続して出現した回数を表します。
+    fn rle(self) -> Vec<(Self::Item, usize)>
+    where
+        Self: Sized,
+        Self::Item: PartialEq;
+}
+
+impl<I: Iterator> RleExt for I {
+    /// イテレータを順次走査し、直前の要素と比較して連続回数をカウントします。
+    ///
+    /// 計算量は `O(N)`（`N` はイテレータの要素数）です。
+    fn rle(self) -> Vec<(Self::Item, usize)>
+    where
+        Self: Sized,
+        Self::Item: PartialEq,
+    {
+        let mut iter = self;
+        let mut result = Vec::new();
+
+        let mut current = match iter.next() {
+            Some(v) => v,
+            None => return result,
+        };
+
+        let mut count = 1;
+
+        for item in iter {
+            if item == current {
+                count += 1;
+            } else {
+                result.push((current, count));
+                current = item;
+                count = 1;
+            }
+        }
+
+        result.push((current, count));
+
+        result
+    }
+}
+
+// =============================================
+
 /// 素集合データ構造 Disjoint Set Union。
 ///
 /// 集合の併合、同一集合判定、集合サイズ取得をほぼ定数時間で行う。
