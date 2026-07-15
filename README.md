@@ -71,7 +71,8 @@ runner-stop
 
 [userscripts/codeforces-local-runner.user.js](userscripts/codeforces-local-runner.user.js)を
 TampermonkeyまたはViolentmonkeyへ追加してください。次の問題ページにコード入力欄、サンプル実行、
-カスタムテスト、結果表示、Submit導線を追加します。
+カスタムテスト、結果表示、Submit導線を追加します。`Run Samples`で全サンプルがACになると、
+Codeforcesの提出ページへ移動して、選択中の言語とコードをそのまま自動提出します。
 
 ```text
 https://codeforces.com/problemset/problem/*/*
