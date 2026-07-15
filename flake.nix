@@ -1,67 +1,98 @@
 {
-  description = "AtCoder Rust dev environment + local runner";
+  description = "AtCoder / Codeforces development environments + shared local runner";
 
   inputs = {
-    nixpkgs.url      = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
-    flake-utils.url  = "github:numtide/flake-utils";
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, rust-overlay, flake-utils }:
+  outputs = { nixpkgs, rust-overlay, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
-        pkgs     = import nixpkgs { inherit system overlays; };
+        pkgs = import nixpkgs { inherit system overlays; };
 
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
-        };
+        mkRustToolchain = channel:
+          channel.default.override {
+            extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
+          };
 
-        # ── runner バイナリ本体 ──────────────────────────────────────
+        # AtCoderの2025/10ジャッジ更新（Rust 1.89.0）に合わせる。
+        atcoderRustToolchain = mkRustToolchain pkgs.rust-bin.stable."1.89.0";
+        # Codeforces側は将来バージョンを固定しやすいよう独立定義にする。
+        codeforcesRustToolchain = mkRustToolchain pkgs.rust-bin.stable.latest;
+
         runnerBin = pkgs.rustPlatform.buildRustPackage {
-          pname   = "runner";
-          version = "0.1.0";
-          src     = ./runner;
+          pname = "runner";
+          version = "0.2.0";
+          src = ./runner;
           cargoLock.lockFile = ./runner/Cargo.lock;
         };
 
-        # python3/pypy3/rustc を PATH に持つラッパー
+        # 1つのrunnerからprofileごとに異なるRustツールチェーンを呼び分ける。
         runner = pkgs.writeShellScriptBin "runner" ''
-          export PATH="${pkgs.python3}/bin:${pkgs.pypy3}/bin:${rustToolchain}/bin:$PATH"
+          export RUNNER_PROFILE="''${RUNNER_PROFILE:-atcoder}"
+          export RUNNER_ATCODER_CARGO="${atcoderRustToolchain}/bin/cargo"
+          export RUNNER_ATCODER_RUSTC="${atcoderRustToolchain}/bin/rustc"
+          export RUNNER_CODEFORCES_CARGO="${codeforcesRustToolchain}/bin/cargo"
+          export RUNNER_CODEFORCES_RUSTC="${codeforcesRustToolchain}/bin/rustc"
+          export PATH="${pkgs.python3}/bin:${pkgs.pypy3}/bin:$PATH"
           exec ${runnerBin}/bin/runner "$@"
         '';
 
         runnerStop = pkgs.writeShellScriptBin "runner-stop" ''
-          PID=$(lsof -i :4000 -t 2>/dev/null | tr '\n' ' ')
+          PORT="''${RUNNER_PORT:-4000}"
+          PID=$(${pkgs.lsof}/bin/lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | tr '\n' ' ')
           if [ -n "$PID" ]; then
             kill $PID
-            echo "Runner stopped (PID $PID)"
+            echo "Runner stopped on port $PORT (PID $PID)"
           else
-            echo "Runner is not running"
+            echo "Runner is not running on port $PORT"
           fi
         '';
 
+        commonPackages = [
+          pkgs.python3
+          pkgs.pypy3
+          pkgs.lsof
+          runner
+          runnerStop
+        ];
+
+        mkDevShell = { profile, rustToolchain, extraPackages ? [ ] }:
+          pkgs.mkShell {
+            packages = [ rustToolchain ] ++ commonPackages ++ extraPackages;
+            RUNNER_PROFILE = profile;
+            RUNNER_PORT = "4000";
+
+            shellHook = ''
+              if ${pkgs.lsof}/bin/lsof -iTCP:"$RUNNER_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+                echo "Local Runner already running on http://127.0.0.1:$RUNNER_PORT"
+              else
+                runner > /tmp/atcoder-runner.log 2>&1 &
+                echo "Shared Local Runner started on http://127.0.0.1:$RUNNER_PORT"
+              fi
+            '';
+          };
+
+        atcoderShell = mkDevShell {
+          profile = "atcoder";
+          rustToolchain = atcoderRustToolchain;
+          extraPackages = [ pkgs.cargo-watch ];
+        };
+
+        codeforcesShell = mkDevShell {
+          profile = "codeforces";
+          rustToolchain = codeforcesRustToolchain;
+        };
       in {
         packages.runner = runner;
 
-        devShells.default = pkgs.mkShell {
-          buildInputs = [
-            rustToolchain
-            pkgs.python3
-            pkgs.pypy3
-            pkgs.cargo-watch
-            runner
-            runnerStop
-          ];
-
-          shellHook = ''
-            if lsof -i :4000 -t >/dev/null 2>&1; then
-              echo "Local Runner already running on http://127.0.0.1:4000"
-            else
-              runner > /tmp/atcoder-runner.log 2>&1 &
-              echo "Local Runner started on http://127.0.0.1:4000"
-            fi
-          '';
+        devShells = {
+          default = atcoderShell;
+          atcoder = atcoderShell;
+          codeforces = codeforcesShell;
         };
       }
     );

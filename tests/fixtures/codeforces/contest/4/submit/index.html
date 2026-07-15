@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Codeforces Userscript Fixture - Contest Submit</title>
+  </head>
+  <body>
+    <form class="submit-form" action="/contest/4/submit" method="post">
+      <label>Problem
+        <select name="submittedProblemIndex">
+          <option value="A">A - Watermelon</option>
+          <option value="B">B - Before an Exam</option>
+        </select>
+      </label>
+      <label>Language
+        <select name="programTypeId">
+          <option value="rust">GNU Rust 1.75.0</option>
+          <option value="python">Python 3.13.2</option>
+          <option value="pypy">PyPy 3.10</option>
+        </select>
+      </label>
+      <label>Source
+        <textarea name="source"></textarea>
+      </label>
+      <button type="submit">Submit</button>
+    </form>
+    <output id="fixture-submission" aria-label="Submitted solution"></output>
+    <script>
+      document.querySelector(".submit-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const output = document.querySelector("#fixture-submission");
+        output.dataset.problem = form.get("submittedProblemIndex");
+        output.dataset.language = form.get("programTypeId");
+        output.dataset.source = form.get("source");
+        output.textContent = "Submitted";
+      });
+    </script>
+    <script src="/userscripts/codeforces-local-runner.user.js?v=3"></script>
+  </body>
+</html>
