@@ -75,3 +75,20 @@ GET /health
 | `internalError` | runner内部エラー |
 
 サンプルのAC / WA判定はクライアント側でExpectedと`stdout`を比較して行います。
+
+## 複数入力の一括実行
+
+同じコードを一度だけコンパイルし、複数の標準入力に対して順番に実行します。
+
+```json
+{
+  "mode": "batch",
+  "profile": "atcoder",
+  "compilerName": "rust",
+  "sourceCode": "fn main() {}",
+  "stdins": ["1 2\n", "3 4\n"]
+}
+```
+
+レスポンスはコード実行レスポンスの配列です。コンパイルまたはrunner内部で失敗した場合は、
+エラーレスポンス1件のみを返します。

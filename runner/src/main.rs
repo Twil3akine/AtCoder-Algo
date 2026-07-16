@@ -84,6 +84,15 @@ enum Request {
         source_code: String,
         stdin: String,
     },
+    Batch {
+        #[serde(default)]
+        profile: Option<Profile>,
+        #[serde(rename = "compilerName")]
+        compiler_name: String,
+        #[serde(rename = "sourceCode")]
+        source_code: String,
+        stdins: Vec<String>,
+    },
 }
 
 #[derive(Serialize)]
@@ -282,6 +291,24 @@ async fn handle(
             );
             Json(serde_json::to_value(response).unwrap())
         }
+        Request::Batch {
+            profile,
+            compiler_name,
+            source_code,
+            stdins,
+        } => {
+            let profile = profile.unwrap_or(state.default_profile);
+            let started = Instant::now();
+            let responses = run_many(&compiler_name, &source_code, &stdins, profile, &state).await;
+            eprintln!(
+                "[batch] profile={} compiler={} cases={} time={}ms",
+                profile.as_str(),
+                compiler_name,
+                responses.len(),
+                started.elapsed().as_millis(),
+            );
+            Json(serde_json::to_value(responses).unwrap())
+        }
     }
 }
 
@@ -292,8 +319,31 @@ async fn run(
     profile: Profile,
     state: &AppState,
 ) -> RunResponse {
+    run_many(
+        compiler_name,
+        source_code,
+        &[stdin.to_string()],
+        profile,
+        state,
+    )
+    .await
+    .into_iter()
+    .next()
+    .unwrap_or_else(|| internal_error(profile, "stdin is missing"))
+}
+
+async fn run_many(
+    compiler_name: &str,
+    source_code: &str,
+    stdins: &[String],
+    profile: Profile,
+    state: &AppState,
+) -> Vec<RunResponse> {
+    if stdins.is_empty() {
+        return Vec::new();
+    }
     match compiler_name {
-        "rust" => run_rust(source_code, stdin, profile, state).await,
+        "rust" => run_rust_many(source_code, stdins, profile, state).await,
         "python" | "pypy" => {
             let interpreter = if compiler_name == "python" {
                 "python3"
@@ -302,25 +352,30 @@ async fn run(
             };
             let dir = match tempdir() {
                 Ok(dir) => dir,
-                Err(error) => return internal_error(profile, format!("tempdir: {error}")),
+                Err(error) => {
+                    return vec![internal_error(profile, format!("tempdir: {error}"))];
+                }
             };
-            run_interpreted(interpreter, source_code, stdin, dir, profile).await
+            run_interpreted_many(interpreter, source_code, stdins, dir, profile).await
         }
-        other => internal_error(profile, format!("unknown compilerName: {other}")),
+        other => vec![internal_error(
+            profile,
+            format!("unknown compilerName: {other}"),
+        )],
     }
 }
 
-async fn run_rust(
+async fn run_rust_many(
     source_code: &str,
-    stdin: &str,
+    stdins: &[String],
     profile: Profile,
     state: &AppState,
-) -> RunResponse {
+) -> Vec<RunResponse> {
     let project = state.project(profile);
     let _guard = project.lock.lock().await;
 
     if let Err(error) = tokio::fs::write(project.path.join("src/main.rs"), source_code).await {
-        return internal_error(profile, format!("write source: {error}"));
+        return vec![internal_error(profile, format!("write source: {error}"))];
     }
 
     let mut command = Command::new(&project.cargo);
@@ -331,35 +386,37 @@ async fn run_rust(
         .kill_on_drop(true);
 
     match timeout(COMPILE_TIMEOUT, command.output()).await {
-        Err(_) => return compile_error(profile, "コンパイルがタイムアウトしました"),
+        Err(_) => return vec![compile_error(profile, "コンパイルがタイムアウトしました")],
         Ok(Err(error)) => {
-            return internal_error(profile, format!("cargo 起動失敗: {error}"));
+            return vec![internal_error(profile, format!("cargo 起動失敗: {error}"))];
         }
         Ok(Ok(output)) if !output.status.success() => {
-            return compile_error(profile, String::from_utf8_lossy(&output.stderr).trim());
+            return vec![compile_error(
+                profile,
+                String::from_utf8_lossy(&output.stderr).trim(),
+            )];
         }
         Ok(Ok(_)) => {}
     }
 
-    execute(
-        &project.path.join("target/release/solution"),
-        &[],
-        stdin,
-        profile,
-    )
-    .await
+    let executable = project.path.join("target/release/solution");
+    let mut responses = Vec::with_capacity(stdins.len());
+    for stdin in stdins {
+        responses.push(execute(&executable, &[], stdin, profile).await);
+    }
+    responses
 }
 
-async fn run_interpreted(
+async fn run_interpreted_many(
     interpreter: &str,
     source_code: &str,
-    stdin: &str,
+    stdins: &[String],
     dir: tempfile::TempDir,
     profile: Profile,
-) -> RunResponse {
+) -> Vec<RunResponse> {
     let source = dir.path().join("solution.py");
     if let Err(error) = tokio::fs::write(&source, source_code).await {
-        return internal_error(profile, format!("write source: {error}"));
+        return vec![internal_error(profile, format!("write source: {error}"))];
     }
 
     let mut command = Command::new(interpreter);
@@ -367,23 +424,35 @@ async fn run_interpreted(
         .args(["-m", "py_compile", source.to_str().unwrap()])
         .kill_on_drop(true);
     match timeout(Duration::from_secs(10), command.output()).await {
-        Err(_) => return compile_error(profile, "構文チェックがタイムアウトしました"),
+        Err(_) => return vec![compile_error(profile, "構文チェックがタイムアウトしました")],
         Ok(Err(error)) => {
-            return internal_error(profile, format!("{interpreter} 起動失敗: {error}"));
+            return vec![internal_error(
+                profile,
+                format!("{interpreter} 起動失敗: {error}"),
+            )];
         }
         Ok(Ok(output)) if !output.status.success() => {
-            return compile_error(profile, String::from_utf8_lossy(&output.stderr).trim());
+            return vec![compile_error(
+                profile,
+                String::from_utf8_lossy(&output.stderr).trim(),
+            )];
         }
         Ok(Ok(_)) => {}
     }
 
-    execute(
-        Path::new(interpreter),
-        &[source.to_str().unwrap()],
-        stdin,
-        profile,
-    )
-    .await
+    let mut responses = Vec::with_capacity(stdins.len());
+    for stdin in stdins {
+        responses.push(
+            execute(
+                Path::new(interpreter),
+                &[source.to_str().unwrap()],
+                stdin,
+                profile,
+            )
+            .await,
+        );
+    }
+    responses
 }
 
 async fn execute(command: &Path, args: &[&str], stdin_data: &str, profile: Profile) -> RunResponse {
@@ -559,5 +628,31 @@ mod tests {
         let value = "あ".repeat(MAX_OUTPUT);
         let truncated = truncate(value);
         assert!(truncated.ends_with("...(出力が長すぎるため切り捨て)"));
+    }
+
+    #[test]
+    fn batch_request_deserializes_multiple_inputs() {
+        let request: Request = serde_json::from_value(serde_json::json!({
+            "mode": "batch",
+            "profile": "atcoder",
+            "compilerName": "rust",
+            "sourceCode": "fn main() {}",
+            "stdins": ["1\n", "2\n", "3\n"]
+        }))
+        .unwrap();
+
+        match request {
+            Request::Batch {
+                profile,
+                compiler_name,
+                stdins,
+                ..
+            } => {
+                assert_eq!(profile, Some(Profile::Atcoder));
+                assert_eq!(compiler_name, "rust");
+                assert_eq!(stdins, ["1\n", "2\n", "3\n"]);
+            }
+            Request::List | Request::Run { .. } => panic!("expected batch request"),
+        }
     }
 }
