@@ -1,5 +1,7 @@
 //! 文字列と列に対するアルゴリズムです。
 
+use std::ops::{Bound, RangeBounds};
+
 /// ASCII 英字を `0..26` の添字へ変換します。
 ///
 /// `char` と `u8` に実装されています。ASCII 英字以外を渡した結果は意味を持ちません。
@@ -77,6 +79,88 @@ pub fn manacher<T: Eq + Clone>(sequence: &[T]) -> Vec<usize> {
         }
     }
     radii
+}
+
+/// 列の任意区間に対する操作を提供します。
+pub trait SequenceExt {
+    /// 指定した区間を反転します。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut a = vec![1, 2, 3, 4, 5];
+    /// a.reverse_range(1..4);
+    /// assert_eq!(a, vec![1, 4, 3, 2, 5]);
+    /// ```
+    fn reverse_range<R: RangeBounds<usize>>(&mut self, range: R);
+
+    /// 指定した区間を左に `k` 個巡回シフトします。
+    ///
+    /// `k` が区間長以上の場合は、区間長で割った余りだけシフトします。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut a = vec![1, 2, 3, 4, 5];
+    /// a.rotate_left_range(1..5, 2);
+    /// assert_eq!(a, vec![1, 4, 5, 2, 3]);
+    /// ```
+    fn rotate_left_range<R: RangeBounds<usize>>(&mut self, range: R, k: usize);
+
+    /// 指定した区間を右に `k` 個巡回シフトします。
+    ///
+    /// `k` が区間長以上の場合は、区間長で割った余りだけシフトします。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut a = vec![1, 2, 3, 4, 5];
+    /// a.rotate_right_range(1..5, 2);
+    /// assert_eq!(a, vec![1, 4, 5, 2, 3]);
+    /// ```
+    fn rotate_right_range<R: RangeBounds<usize>>(&mut self, range: R, k: usize);
+}
+
+impl<T> SequenceExt for [T] {
+    fn reverse_range<R: RangeBounds<usize>>(&mut self, range: R) {
+        let (l, r) = range_bounds(range, self.len());
+        self[l..r].reverse();
+    }
+
+    fn rotate_left_range<R: RangeBounds<usize>>(&mut self, range: R, k: usize) {
+        let (l, r) = range_bounds(range, self.len());
+        let len = r - l;
+
+        if len > 0 {
+            self[l..r].rotate_left(k % len);
+        }
+    }
+
+    fn rotate_right_range<R: RangeBounds<usize>>(&mut self, range: R, k: usize) {
+        let (l, r) = range_bounds(range, self.len());
+        let len = r - l;
+
+        if len > 0 {
+            self[l..r].rotate_right(k % len);
+        }
+    }
+}
+
+fn range_bounds<R: RangeBounds<usize>>(range: R, len: usize) -> (usize, usize) {
+    let l = match range.start_bound() {
+        Bound::Included(&x) => x,
+        Bound::Excluded(&x) => x + 1,
+        Bound::Unbounded => 0,
+    };
+
+    let r = match range.end_bound() {
+        Bound::Included(&x) => x + 1,
+        Bound::Excluded(&x) => x,
+        Bound::Unbounded => len,
+    };
+
+    assert!(l <= r && r <= len);
+    (l, r)
 }
 
 #[cfg(test)]
