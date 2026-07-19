@@ -82,14 +82,42 @@ pub fn manacher<T: Eq + Clone>(sequence: &[T]) -> Vec<usize> {
 }
 
 /// 列の任意区間に対する操作を提供します。
-pub trait SequenceExt {
-    /// 指定した区間を反転します。
+///
+/// `[T]` に実装されているため、`Vec<T>` や配列のスライスに対して利用できます。
+pub trait SequenceExt<T> {
+    /// 指定した区間が回文かどうかを返します。
+    ///
+    /// 指定区間の先頭と末尾から順に要素を比較します。
+    /// 計算量は区間長を `L` として `O(L)`、追加メモリは `O(1)` です。
     ///
     /// # Examples
     ///
     /// ```
+    /// use atcoder::string::SequenceExt;
+    ///
+    /// let a = vec![1, 2, 3, 2, 1];
+    ///
+    /// assert!(a.is_palindrome(..));
+    /// assert!(a.is_palindrome(1..4));
+    /// assert!(a.is_palindrome(2..3));
+    /// assert!(!a.is_palindrome(0..4));
+    /// ```
+    fn is_palindrome<R: RangeBounds<usize>>(&self, range: R) -> bool
+    where
+        T: Eq;
+
+    /// 指定した区間を反転します。
+    ///
+    /// 計算量は区間長を `L` として `O(L)`、追加メモリは `O(1)` です。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use atcoder::string::SequenceExt;
+    ///
     /// let mut a = vec![1, 2, 3, 4, 5];
     /// a.reverse_range(1..4);
+    ///
     /// assert_eq!(a, vec![1, 4, 3, 2, 5]);
     /// ```
     fn reverse_range<R: RangeBounds<usize>>(&mut self, range: R);
@@ -97,12 +125,18 @@ pub trait SequenceExt {
     /// 指定した区間を左に `k` 個巡回シフトします。
     ///
     /// `k` が区間長以上の場合は、区間長で割った余りだけシフトします。
+    /// 空区間に対して呼び出した場合は何もしません。
+    ///
+    /// 計算量は区間長を `L` として `O(L)`、追加メモリは `O(1)` です。
     ///
     /// # Examples
     ///
     /// ```
+    /// use atcoder::string::SequenceExt;
+    ///
     /// let mut a = vec![1, 2, 3, 4, 5];
     /// a.rotate_left_range(1..5, 2);
+    ///
     /// assert_eq!(a, vec![1, 4, 5, 2, 3]);
     /// ```
     fn rotate_left_range<R: RangeBounds<usize>>(&mut self, range: R, k: usize);
@@ -110,18 +144,34 @@ pub trait SequenceExt {
     /// 指定した区間を右に `k` 個巡回シフトします。
     ///
     /// `k` が区間長以上の場合は、区間長で割った余りだけシフトします。
+    /// 空区間に対して呼び出した場合は何もしません。
+    ///
+    /// 計算量は区間長を `L` として `O(L)`、追加メモリは `O(1)` です。
     ///
     /// # Examples
     ///
     /// ```
+    /// use atcoder::string::SequenceExt;
+    ///
     /// let mut a = vec![1, 2, 3, 4, 5];
     /// a.rotate_right_range(1..5, 2);
+    ///
     /// assert_eq!(a, vec![1, 4, 5, 2, 3]);
     /// ```
     fn rotate_right_range<R: RangeBounds<usize>>(&mut self, range: R, k: usize);
 }
 
-impl<T> SequenceExt for [T] {
+impl<T> SequenceExt<T> for [T] {
+    fn is_palindrome<R: RangeBounds<usize>>(&self, range: R) -> bool
+    where
+        T: Eq,
+    {
+        let (l, r) = range_bounds(range, self.len());
+        let slice = &self[l..r];
+
+        slice.iter().eq(slice.iter().rev())
+    }
+
     fn reverse_range<R: RangeBounds<usize>>(&mut self, range: R) {
         let (l, r) = range_bounds(range, self.len());
         self[l..r].reverse();
@@ -146,20 +196,25 @@ impl<T> SequenceExt for [T] {
     }
 }
 
+/// `RangeBounds<usize>` を半開区間 `[l, r)` に変換します。
+///
+/// `..`, `l..`, `..r`, `l..r`, `l..=r` などを受け付けます。
+/// 変換後の範囲が `0 <= l <= r <= len` を満たさない場合は panic します。
 fn range_bounds<R: RangeBounds<usize>>(range: R, len: usize) -> (usize, usize) {
     let l = match range.start_bound() {
         Bound::Included(&x) => x,
-        Bound::Excluded(&x) => x + 1,
+        Bound::Excluded(&x) => x.checked_add(1).expect("range start bound overflow"),
         Bound::Unbounded => 0,
     };
 
     let r = match range.end_bound() {
-        Bound::Included(&x) => x + 1,
+        Bound::Included(&x) => x.checked_add(1).expect("range end bound overflow"),
         Bound::Excluded(&x) => x,
         Bound::Unbounded => len,
     };
 
-    assert!(l <= r && r <= len);
+    assert!(l <= r && r <= len, "range out of bounds");
+
     (l, r)
 }
 
