@@ -11,7 +11,7 @@
 /// ```
 /// use atcoder::data_structure::dual_segment_tree::DualSegmentTree;
 ///
-/// let mut tree = DualSegmentTree::new(4, |a, b| a + b, 0);
+/// let mut tree = DualSegmentTree::new(|a, b| a + b, 4, 0);
 /// tree.apply(1, 4, 3);
 /// tree.apply(2, 3, 2);
 /// assert_eq!(tree.get(2), 5);
@@ -28,7 +28,7 @@ pub struct DualSegmentTree<T, F> {
 
 impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
     /// 長さ `len`、全要素が `identity` の木を作ります。計算量は `O(N)` です。
-    pub fn new(len: usize, compose: F, identity: T) -> Self {
+    pub fn new(compose: F, len: usize, identity: T) -> Self {
         Self::from_vec(vec![identity; len], compose, identity)
     }
 
@@ -48,6 +48,11 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
             log,
             data,
         }
+    }
+
+    /// 各点の初期値を指定して木を構築します。計算量は `O(N)` です。
+    pub fn from(compose: F, values: Vec<T>, identity: T) -> Self {
+        Self::from_vec(values, compose, identity)
     }
 
     fn apply_node(&mut self, index: usize, value: T) {
@@ -106,6 +111,13 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
         path.into_iter().fold(self.identity, |value, index| {
             (self.compose)(value, self.data[index])
         })
+    }
+
+    /// `index` 番目の値を返します。
+    ///
+    /// [`get`](Self::get) と同じです。
+    pub fn at(&self, index: usize) -> T {
+        self.get(index)
     }
 }
 
@@ -208,6 +220,13 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree2D<T, F> {
         }
         result
     }
+
+    /// 点 `(row, column)` の値を返します。
+    ///
+    /// [`get`](Self::get) と同じです。
+    pub fn at(&self, row: usize, column: usize) -> T {
+        self.get(row, column)
+    }
 }
 
 #[cfg(test)]
@@ -216,7 +235,7 @@ mod tests {
 
     #[test]
     fn applies_ranges() {
-        let mut tree = DualSegmentTree::new(4, |a, b| a + b, 0);
+        let mut tree = DualSegmentTree::new(|a, b| a + b, 4, 0);
         tree.apply(0, 3, 2);
         tree.apply(1, 4, 5);
         assert_eq!([tree.get(0), tree.get(1), tree.get(3)], [2, 7, 5]);
@@ -225,7 +244,7 @@ mod tests {
     #[test]
     fn preserves_non_commutative_order() {
         let compose = |old: (i64, i64), new: (i64, i64)| (new.0 * old.0, new.0 * old.1 + new.1);
-        let mut tree = DualSegmentTree::new(2, compose, (1, 0));
+        let mut tree = DualSegmentTree::new(compose, 2, (1, 0));
         tree.apply(0, 1, (2, 0));
         tree.apply(0, 2, (1, 3));
         assert_eq!(tree.get(0), (2, 3));

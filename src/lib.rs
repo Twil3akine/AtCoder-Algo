@@ -7,6 +7,8 @@
 pub mod algorithm;
 #[path = "lib/data_structure/mod.rs"]
 pub mod data_structure;
+#[path = "lib/debug.rs"]
+pub mod debug;
 #[path = "lib/geometry.rs"]
 pub mod geometry;
 #[path = "lib/graph/mod.rs"]

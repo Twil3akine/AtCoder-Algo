@@ -40,6 +40,13 @@ impl<const MOD: i64> ModInt<MOD> {
         self.value
     }
 
+    /// 正規化済みの値を返します。
+    ///
+    /// [`value`](Self::value) と同じです。
+    pub const fn val(&self) -> i64 {
+        self.value
+    }
+
     /// `self` の乗法逆元を返します。計算量は `O(log MOD)` です。
     pub fn inv(self) -> Self {
         self.pow(MOD - 2)

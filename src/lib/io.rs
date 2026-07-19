@@ -28,6 +28,13 @@ impl<R: BufRead> Scanner<R> {
         }
     }
 
+    /// 入力元 `reader` を指定して scanner を作ります。
+    ///
+    /// [`new`](Self::new) と同じです。
+    pub fn with_reader(reader: R) -> Self {
+        Self::new(reader)
+    }
+
     /// 次のトークンを `T` として返します。
     pub fn token<T: std::str::FromStr>(&mut self) -> T {
         loop {
@@ -60,6 +67,10 @@ thread_local! {
     #[doc(hidden)]
     pub static SCANNER: RefCell<Scanner<io::BufReader<io::Stdin>>> =
         RefCell::new(Scanner::new(io::BufReader::new(io::stdin())));
+
+    #[doc(hidden)]
+    pub static WRITER: RefCell<BufWriter<io::Stdout>> =
+        RefCell::new(BufWriter::new(io::stdout()));
 }
 
 /// `input!` の内部で入力形式を展開します。
@@ -124,6 +135,38 @@ macro_rules! input {
         )+
         $($crate::input!($($rest)*);)?
     };
+}
+
+/// グローバルなバッファへ改行なしで出力します。
+///
+/// 出力後は [`wflush`] を呼び出してください。
+#[macro_export]
+macro_rules! wprint {
+    ($($argument:tt)*) => {
+        $crate::io::WRITER.with(|writer| {
+            std::io::Write::write_fmt(
+                &mut *writer.borrow_mut(),
+                format_args!($($argument)*),
+            )
+            .unwrap()
+        })
+    };
+}
+
+/// グローバルなバッファへ改行付きで出力します。
+#[macro_export]
+macro_rules! wprintln {
+    () => {
+        $crate::wprint!("\n")
+    };
+    ($($argument:tt)*) => {
+        $crate::wprint!("{}\n", format_args!($($argument)*))
+    };
+}
+
+/// [`wprint!`] と [`wprintln!`] の出力バッファを flush します。
+pub fn wflush() {
+    WRITER.with(|writer| writer.borrow_mut().flush().unwrap());
 }
 
 /// `Write` 先へ効率よく出力するヘルパです。

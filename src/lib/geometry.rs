@@ -54,9 +54,23 @@ impl Point {
         self.dot(self)
     }
 
+    /// 原点からの距離の二乗を返します。
+    ///
+    /// [`norm_squared`](Self::norm_squared) と同じです。
+    pub const fn norm2(self) -> isize {
+        self.norm_squared()
+    }
+
     /// `other` までの距離の二乗を返します。
     pub fn distance_squared(self, other: Self) -> isize {
         (self - other).norm_squared()
+    }
+
+    /// `other` までの距離の二乗を返します。
+    ///
+    /// [`distance_squared`](Self::distance_squared) と同じです。
+    pub fn dist2(self, other: Self) -> isize {
+        self.distance_squared(other)
     }
 }
 

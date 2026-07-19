@@ -29,6 +29,14 @@ impl Xorshift {
         self.state
     }
 
+    /// 次の `u64` を返します。
+    ///
+    /// [`next_u64`](Self::next_u64) と同じです。
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> u64 {
+        self.next_u64()
+    }
+
     /// 閉区間 `[min, max]` の `usize` を返します。
     ///
     /// `min > max` の場合と、区間幅が `usize` で表せない場合は panic します。剰余による
@@ -37,6 +45,13 @@ impl Xorshift {
         assert!(min <= max, "empty range");
         let width = max.checked_sub(min).unwrap().checked_add(1).unwrap();
         min + self.next_u64() as usize % width
+    }
+
+    /// 閉区間 `[min, max]` の `usize` を返します。
+    ///
+    /// [`range_inclusive`](Self::range_inclusive) と同じです。
+    pub fn next_range(&mut self, min: usize, max: usize) -> usize {
+        self.range_inclusive(min, max)
     }
 
     /// 半開区間 `[0.0, 1.0)` の `f64` を返します。

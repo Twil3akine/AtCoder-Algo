@@ -95,6 +95,7 @@ src/
     ├── data_structure/            DSU・ヒープ・セグメント木
     ├── graph/                     グラフアルゴリズム
     ├── math/                      整数演算・ModInt
+    ├── debug.rs                   debug!マクロ
     ├── geometry.rs                2次元整数幾何
     ├── grid.rs                    グリッドの範囲・近傍
     ├── io.rs                      input!・Writer

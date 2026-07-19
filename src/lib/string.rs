@@ -6,17 +6,30 @@
 pub trait AlphaExt {
     /// 大文字・小文字を区別せず、`a` を `0`、`z` を `25` として返します。
     fn alphabet_index(self) -> usize;
+
+    /// 大文字・小文字を区別せず、`a` を `0`、`z` を `25` として返します。
+    ///
+    /// [`alphabet_index`](Self::alphabet_index) と同じです。
+    fn to_idx(self) -> usize;
 }
 
 impl AlphaExt for char {
     fn alphabet_index(self) -> usize {
         (self.to_ascii_lowercase() as u8 - b'a') as usize
     }
+
+    fn to_idx(self) -> usize {
+        self.alphabet_index()
+    }
 }
 
 impl AlphaExt for u8 {
     fn alphabet_index(self) -> usize {
         (self.to_ascii_lowercase() - b'a') as usize
+    }
+
+    fn to_idx(self) -> usize {
+        self.alphabet_index()
     }
 }
 

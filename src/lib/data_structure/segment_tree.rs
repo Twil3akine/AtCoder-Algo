@@ -29,7 +29,7 @@ pub struct SegmentTree<T, F> {
 
 impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
     /// 長さ `len`、全要素が `identity` の木を作ります。計算量は `O(N)` です。
-    pub fn new(len: usize, op: F, identity: T) -> Self {
+    pub fn new(op: F, len: usize, identity: T) -> Self {
         let size = len.next_power_of_two().max(1);
         Self {
             op,
@@ -59,6 +59,11 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         }
     }
 
+    /// 配列から木を構築します。計算量は `O(N)` です。
+    pub fn from(op: F, values: Vec<T>, identity: T) -> Self {
+        Self::from_vec(values, op, identity)
+    }
+
     /// 要素数を返します。
     pub const fn len(&self) -> usize {
         self.len
@@ -82,8 +87,15 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         }
     }
 
+    /// `index` 番目を `value` に更新します。
+    ///
+    /// [`set`](Self::set) と同じです。
+    pub fn apply(&mut self, index: usize, value: T) {
+        self.set(index, value);
+    }
+
     /// `index` 番目の値を返します。範囲外なら panic します。
-    pub fn get(&self, index: usize) -> T {
+    pub fn at(&self, index: usize) -> T {
         assert!(index < self.len, "index out of bounds");
         self.data[self.size + index]
     }
@@ -110,6 +122,13 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
             right >>= 1;
         }
         (self.op)(left_value, right_value)
+    }
+
+    /// 半開区間 `[left, right)` の集約値を返します。
+    ///
+    /// [`fold`](Self::fold) と同じです。
+    pub fn get(&self, left: usize, right: usize) -> T {
+        self.fold(left, right)
     }
 
     /// `predicate(fold(left, right))` が真である最大の `right` を返します。
