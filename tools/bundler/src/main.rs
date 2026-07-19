@@ -72,6 +72,11 @@ fn run() -> Result<()> {
         }
     }
 
+    remove_root_macro_imports(
+        &mut main_syntax.items,
+        &crate_name,
+        &library.exported_macros,
+    );
     CratePathRewriter {
         crate_name: &crate_name,
     }
@@ -462,6 +467,66 @@ fn rewrite_use_tree(tree: &mut UseTree, crate_name: &str) {
     }
 }
 
+fn remove_root_macro_imports(
+    items: &mut Vec<Item>,
+    crate_name: &str,
+    macros: &BTreeMap<String, ModulePath>,
+) {
+    items.retain_mut(|item| {
+        let Item::Use(item_use) = item else {
+            return true;
+        };
+        let Some(tree) = filter_macro_imports(&item_use.tree, &mut Vec::new(), crate_name, macros)
+        else {
+            return false;
+        };
+        item_use.tree = tree;
+        true
+    });
+}
+
+fn filter_macro_imports(
+    tree: &UseTree,
+    prefix: &mut ModulePath,
+    crate_name: &str,
+    macros: &BTreeMap<String, ModulePath>,
+) -> Option<UseTree> {
+    match tree {
+        UseTree::Path(path) => {
+            prefix.push(path.ident.to_string());
+            let child = filter_macro_imports(&path.tree, prefix, crate_name, macros);
+            prefix.pop();
+            child.map(|child| {
+                let mut path = path.clone();
+                path.tree = Box::new(child);
+                UseTree::Path(path)
+            })
+        }
+        UseTree::Name(name) => {
+            let is_root_macro = prefix.len() == 1
+                && prefix[0] == crate_name
+                && macros.contains_key(&name.ident.to_string());
+            (!is_root_macro).then(|| UseTree::Name(name.clone()))
+        }
+        UseTree::Rename(rename) => {
+            let is_root_macro = prefix.len() == 1
+                && prefix[0] == crate_name
+                && macros.contains_key(&rename.ident.to_string());
+            (!is_root_macro).then(|| UseTree::Rename(rename.clone()))
+        }
+        UseTree::Glob(glob) => Some(UseTree::Glob(glob.clone())),
+        UseTree::Group(group) => {
+            let mut group = group.clone();
+            group.items = group
+                .items
+                .iter()
+                .filter_map(|tree| filter_macro_imports(tree, prefix, crate_name, macros))
+                .collect();
+            (!group.items.is_empty()).then_some(UseTree::Group(group))
+        }
+    }
+}
+
 fn inline_module(
     path: &[String],
     declaration: &ItemMod,
@@ -697,7 +762,9 @@ fn format_size(bytes: usize) -> String {
 mod tests {
     use std::fs;
 
-    use super::{collect_use_tree, format_size, select_modules, Library, ModulePath};
+    use super::{
+        collect_use_tree, filter_macro_imports, format_size, select_modules, Library, ModulePath,
+    };
 
     #[test]
     fn flattens_grouped_use_paths() {
@@ -743,5 +810,24 @@ mod tests {
         let selected = select_modules(&main, &library, "sample");
         assert!(selected.contains(&vec!["a".into()]));
         assert!(selected.contains(&vec!["b".into()]));
+    }
+
+    #[test]
+    fn removes_only_exported_macros_from_grouped_import() {
+        let item: syn::ItemUse = syn::parse_quote!(
+            use atcoder::{input, io::Writer, geometry::Point};
+        );
+        let macros = [("input".into(), vec!["io".into()])].into_iter().collect();
+        let filtered =
+            filter_macro_imports(&item.tree, &mut Vec::new(), "atcoder", &macros).unwrap();
+        let mut paths = Vec::new();
+        collect_use_tree(&filtered, &mut Vec::new(), &mut paths);
+        assert_eq!(
+            paths,
+            [
+                vec!["atcoder", "io", "Writer"],
+                vec!["atcoder", "geometry", "Point"]
+            ]
+        );
     }
 }
