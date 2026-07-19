@@ -67,6 +67,17 @@ runner-stop
 ログは`/tmp/atcoder-runner.log`です。APIの詳細は
 [docs/runner-api.md](docs/runner-api.md)を参照してください。
 
+## AtCoder Userscript
+
+[userscripts/atcoder-local-runner.user.js](userscripts/atcoder-local-runner.user.js)を
+TampermonkeyまたはViolentmonkeyへ追加してください。AtCoderの提出ボタンの横に`実行`と
+`実行して提出`、その下にサンプル結果とカスタムテストを追加します。`実行して提出`では
+全サンプルがACならそのまま提出します。runnerへは常に
+`profile=atcoder`を指定します。
+
+AtCoder Easy Test v2とはUIとキーボード操作が重複するため、置き換える場合はAtCoder Easy Test v2を
+無効化してください。
+
 ## Codeforces Userscript
 
 [userscripts/codeforces-local-runner.user.js](userscripts/codeforces-local-runner.user.js)を
