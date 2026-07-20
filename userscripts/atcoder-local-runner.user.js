@@ -64,6 +64,16 @@
   runSamplesButton.addEventListener("click", () => runSamples(true));
   root.querySelector("#ac-lr-run-custom").addEventListener("click", runCustomTest);
 
+  document.addEventListener("keydown", (event) => {
+    if (!event.metaKey || event.key !== "Enter") return;
+    if (runOnlyButton.disabled || runSamplesButton.disabled) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    runSamples(true);
+  });
+
   const samples = readSamples();
   installSampleButtons(samples);
   checkHealth();

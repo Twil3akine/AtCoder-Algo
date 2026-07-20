@@ -117,6 +117,22 @@
   root.querySelector("#cf-lr-run-samples").addEventListener("click", runSamples);
   root.querySelector("#cf-lr-run-custom").addEventListener("click", runCustomTest);
 
+  document.addEventListener(
+    "keydown", (event) => {
+      if (!event.metaKey || event.key !== "Enter") return;
+
+      if ([...root.querySelectorAll("button")].some((button) => button.disabled)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      runSamples();
+    },
+    true,
+  );
+
   checkHealth();
 
   function codeKey(language) {
