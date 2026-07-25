@@ -20,7 +20,7 @@
 /// # Examples
 ///
 /// ```
-/// use atcoder::math::floor_sum;
+/// use atcoder::floor_sum::floor_sum;
 ///
 /// let sum = floor_sum(6, 5, 3, 2);
 ///
@@ -31,6 +31,9 @@
 /// ```
 pub fn floor_sum(mut n: u64, mut m: u64, mut a: u64, mut b: u64) -> u128 {
     assert!(m > 0, "modulus must be positive");
+    if n == 0 {
+        return 0;
+    }
 
     let mut sum = 0u128;
 
@@ -101,7 +104,7 @@ mod tests {
     #[test]
     fn calculates_floor_sum() {
         assert_eq!(floor_sum(6, 5, 3, 2), 9);
-        assert_eq!(floor_sum(0, 5, 3, 2), 0);
+        assert_eq!(floor_sum(0, 5, 8, 7), 0);
         assert_eq!(floor_sum(10, 7, 0, 15), 20);
     }
 
