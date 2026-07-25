@@ -218,13 +218,74 @@ fn range_bounds<R: RangeBounds<usize>>(range: R, len: usize) -> (usize, usize) {
     (l, r)
 }
 
+/// 10進数の各桁を表す列を `usize` に変換します。
+///
+/// `[usize]` と `[char]` に実装されているため、`Vec<usize>` や `Vec<char>` にも
+/// そのまま利用できます。空の列、10進数として不正な要素、または `usize` の範囲を
+/// 超える値に対しては `None` を返します。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::string::DecimalDigitsExt;
+///
+/// assert_eq!(vec![1, 2, 3].parse_usize(), Some(123));
+/// assert_eq!(vec!['4', '5', '6'].parse_usize(), Some(456));
+/// ```
+pub trait DecimalDigitsExt {
+    /// 各要素を10進数の一桁として解釈し、`usize` へ変換します。
+    fn parse_usize(&self) -> Option<usize>;
+}
+
+impl DecimalDigitsExt for [usize] {
+    fn parse_usize(&self) -> Option<usize> {
+        if self.is_empty() {
+            return None;
+        }
+
+        self.iter().try_fold(0_usize, |value, &digit| {
+            if digit >= 10 {
+                return None;
+            }
+            value.checked_mul(10)?.checked_add(digit)
+        })
+    }
+}
+
+impl DecimalDigitsExt for [char] {
+    fn parse_usize(&self) -> Option<usize> {
+        if self.is_empty() {
+            return None;
+        }
+
+        self.iter().try_fold(0_usize, |value, &digit| {
+            let digit = digit.to_digit(10)? as usize;
+            value.checked_mul(10)?.checked_add(digit)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{manacher, AlphaExt};
+    use super::{manacher, AlphaExt, DecimalDigitsExt};
 
     #[test]
     fn finds_even_palindrome() {
         assert_eq!(manacher(b"abba")[4] - 1, 4);
         assert_eq!(b'Z'.alphabet_index(), 25);
+    }
+
+    #[test]
+    fn parses_decimal_digits() {
+        assert_eq!([0, 1, 2, 3].parse_usize(), Some(123));
+        assert_eq!(['0', '4', '5', '6'].parse_usize(), Some(456));
+    }
+
+    #[test]
+    fn rejects_invalid_or_overflowing_decimal_digits() {
+        assert_eq!(Vec::<usize>::new().parse_usize(), None);
+        assert_eq!([1, 10].parse_usize(), None);
+        assert_eq!(['1', 'x'].parse_usize(), None);
+        assert_eq!(vec![9; usize::BITS as usize].parse_usize(), None);
     }
 }
