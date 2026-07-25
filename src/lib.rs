@@ -9,6 +9,8 @@ pub mod algorithm;
 pub mod data_structure;
 #[path = "lib/debug.rs"]
 pub mod debug;
+#[path = "lib/floor_sum.rs"]
+pub mod floor_sum;
 #[path = "lib/geometry.rs"]
 pub mod geometry;
 #[path = "lib/graph/mod.rs"]
