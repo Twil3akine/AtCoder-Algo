@@ -106,7 +106,7 @@ fn run() -> Result<()> {
     fs::write(&output, &bundled)
         .with_context(|| format!("{} を書き込めません", output.display()))?;
 
-    compile_with_rustc(&output, edition)?;
+    compile_with_cargo(&output, edition, &manifest, &project)?;
     if options.copy_to_clipboard {
         copy_to_clipboard(&bundled)?;
     }
@@ -135,7 +135,7 @@ fn run() -> Result<()> {
         format_size(bundled.len())
     );
     println!();
-    println!("✓ rustc compilation succeeded");
+    println!("✓ cargo check succeeded");
     if options.copy_to_clipboard {
         println!("✓ copied to clipboard");
     }
@@ -715,18 +715,70 @@ fn module_has_code(syntax: &File) -> bool {
     })
 }
 
-fn compile_with_rustc(source: &Path, edition: &str) -> Result<()> {
+fn compile_with_cargo(
+    source: &Path,
+    edition: &str,
+    manifest: &toml::Value,
+    project: &Path,
+) -> Result<()> {
     let directory = tempfile::tempdir()?;
-    let output = Command::new("rustc")
-        .arg(format!("--edition={edition}"))
-        .arg(source)
-        .arg("-o")
-        .arg(directory.path().join("bundle-check"))
+    let source_directory = directory.path().join("src");
+    fs::create_dir(&source_directory)?;
+    fs::copy(source, source_directory.join("main.rs"))?;
+
+    let mut package = toml::map::Map::new();
+    package.insert(
+        "name".into(),
+        manifest
+            .get("package")
+            .and_then(|package| package.get("name"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or("bundle-check")
+            .into(),
+    );
+    package.insert(
+        "version".into(),
+        manifest
+            .get("package")
+            .and_then(|package| package.get("version"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or("0.0.0")
+            .into(),
+    );
+    package.insert("edition".into(), edition.into());
+
+    let mut check_manifest = toml::map::Map::new();
+    check_manifest.insert("package".into(), toml::Value::Table(package));
+    for key in ["dependencies", "features", "target", "patch"] {
+        if let Some(value) = manifest.get(key) {
+            check_manifest.insert(key.into(), value.clone());
+        }
+    }
+    fs::write(
+        directory.path().join("Cargo.toml"),
+        toml::to_string(&check_manifest)?,
+    )?;
+
+    let lock_file = project.join("Cargo.lock");
+    if lock_file.is_file() {
+        fs::copy(&lock_file, directory.path().join("Cargo.lock"))?;
+    }
+
+    let mut command = Command::new("cargo");
+    command.arg("check").arg("--quiet");
+    if lock_file.is_file() {
+        command.arg("--locked");
+    }
+    let output = command
+        .arg("--manifest-path")
+        .arg(directory.path().join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(project.join("target"))
         .output()
-        .context("rustc を実行できません")?;
+        .context("cargo check を実行できません")?;
     if !output.status.success() {
         bail!(
-            "生成コードの rustc compilation に失敗しました:\n{}",
+            "生成コードの cargo check に失敗しました:\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
@@ -763,7 +815,8 @@ mod tests {
     use std::fs;
 
     use super::{
-        collect_use_tree, filter_macro_imports, format_size, select_modules, Library, ModulePath,
+        collect_use_tree, compile_with_cargo, filter_macro_imports, format_size, select_modules,
+        Library, ModulePath,
     };
 
     #[test]
@@ -829,5 +882,36 @@ mod tests {
                 vec!["atcoder", "geometry", "Point"]
             ]
         );
+    }
+
+    #[test]
+    fn compiles_bundle_with_package_dependencies() {
+        let directory = tempfile::tempdir().unwrap();
+        let dependency = directory.path().join("dependency");
+        fs::create_dir_all(dependency.join("src")).unwrap();
+        fs::write(
+            dependency.join("Cargo.toml"),
+            "[package]\nname = \"sample-dependency\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(
+            dependency.join("src/lib.rs"),
+            "pub fn answer() -> usize { 42 }\n",
+        )
+        .unwrap();
+
+        let bundle = directory.path().join("bundle.rs");
+        fs::write(
+            &bundle,
+            "fn main() { assert_eq!(sample_dependency::answer(), 42); }\n",
+        )
+        .unwrap();
+        let manifest = toml::from_str(&format!(
+            "[dependencies]\nsample-dependency = {{ path = {:?} }}\n",
+            dependency
+        ))
+        .unwrap();
+
+        compile_with_cargo(&bundle, "2021", &manifest, directory.path()).unwrap();
     }
 }
