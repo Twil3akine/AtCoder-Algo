@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Codeforces Local Runner
 // @namespace    https://github.com/Twil3akine/AtCoder-Algo
-// @version      0.2.0
+// @version      0.3.0
 // @description  Codeforcesの問題ページでサンプルをローカル実行し、全AC時に自動提出します。
 // @match        https://codeforces.com/problemset/problem/*/*
 // @match        https://codeforces.com/problemset/submit*
@@ -132,6 +132,18 @@
     },
     true,
   );
+
+  document.addEventListener("paste", (event) => {
+    if (isEditableTarget(event.target)) return;
+
+    const sourceCode = event.clipboardData?.getData("text/plain");
+    if (!sourceCode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    setFormValue(codeEditor, sourceCode);
+    codeEditor.focus();
+  });
 
   checkHealth();
 
@@ -438,6 +450,11 @@
     field.value = value;
     field.dispatchEvent(new Event("input", { bubbles: true }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function isEditableTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('input, textarea, [contenteditable]:not([contenteditable="false"])'));
   }
 
   function requestJson(method, path, body) {

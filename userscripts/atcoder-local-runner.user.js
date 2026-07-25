@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AtCoder Local Runner
 // @namespace    https://github.com/Twil3akine/AtCoder-Algo
-// @version      0.1.0
+// @version      0.2.0
 // @description  AtCoderの問題ページで、現在のコードをローカル実行してサンプルを検証します。
 // @match        https://atcoder.jp/contests/*/tasks/*
 // @grant        unsafeWindow
@@ -72,6 +72,16 @@
     event.stopPropagation();
 
     runSamples(true);
+  });
+
+  document.addEventListener("paste", (event) => {
+    if (isEditableTarget(event.target)) return;
+
+    const sourceCode = event.clipboardData?.getData("text/plain");
+    if (!sourceCode || !setSourceCode(sourceCode)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
   });
 
   const samples = readSamples();
@@ -247,6 +257,37 @@
 
     const textarea = document.querySelector('textarea[name="sourceCode"], textarea[name="source"]');
     return textarea?.value || "";
+  }
+
+  function setSourceCode(sourceCode) {
+    const plain = document.querySelector("#plain-textarea, .plain-textarea");
+    const toggle = document.querySelector(".btn-toggle-editor");
+    const usesPlainEditor = toggle?.classList.contains("active");
+
+    if (!usesPlainEditor && typeof unsafeWindow?.ace !== "undefined") {
+      const editorElement = document.querySelector("#editor");
+      if (editorElement) {
+        const editor = unsafeWindow.ace.edit(editorElement);
+        editor.setValue(sourceCode, -1);
+        editor.focus();
+        return true;
+      }
+    }
+
+    const textarea =
+      plain || document.querySelector('textarea[name="sourceCode"], textarea[name="source"]');
+    if (!textarea) return false;
+
+    textarea.value = sourceCode;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    textarea.focus();
+    return true;
+  }
+
+  function isEditableTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('input, textarea, [contenteditable]:not([contenteditable="false"])'));
   }
 
   function submitCurrentCode() {
