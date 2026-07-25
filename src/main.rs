@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
-use atcoder::{input, io::*};
+use atcoder::{debug, input, io::*};
 
 fn main() {
     let mut wr = Writer::new();
