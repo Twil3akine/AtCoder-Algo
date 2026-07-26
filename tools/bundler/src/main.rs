@@ -11,6 +11,18 @@ use syn::{Attribute, File, Item, ItemMod, Path as SynPath, UseTree};
 
 type ModulePath = Vec<String>;
 
+#[derive(Default)]
+struct Selection {
+    modules: BTreeSet<ModulePath>,
+    items: BTreeMap<ModulePath, Option<BTreeSet<String>>>,
+}
+
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+struct Dependency {
+    module: ModulePath,
+    item: Option<String>,
+}
+
 #[derive(Clone)]
 struct ModuleInfo {
     file: PathBuf,
@@ -60,14 +72,14 @@ fn run() -> Result<()> {
         syn::parse_file(&main_source).context("src/main.rs の構文解析に失敗しました")?;
     let library = Library::load(&library_file)?;
 
-    let selected = select_modules(&main_syntax, &library, &crate_name);
+    let selected = select_library(&main_syntax, &library, &crate_name);
     let mut bundled_modules = Vec::new();
     for item in &library.root.items {
         let Item::Mod(declaration) = item else {
             continue;
         };
         let path = vec![declaration.ident.to_string()];
-        if selected.contains(&path) {
+        if selected.modules.contains(&path) {
             bundled_modules.push(inline_module(&path, declaration, &library, &selected)?);
         }
     }
@@ -112,12 +124,14 @@ fn run() -> Result<()> {
     }
 
     let reported = selected
+        .modules
         .iter()
         .filter(|path| module_has_code(&library.modules[*path].syntax))
         .map(|path| path.join("::"))
         .collect::<Vec<_>>();
     let source_size = main_source.len()
         + selected
+            .modules
             .iter()
             .map(|path| fs::metadata(&library.modules[path].file).map(|meta| meta.len() as usize))
             .collect::<std::io::Result<Vec<_>>>()?
@@ -288,11 +302,11 @@ fn path_attribute(attribute: &Attribute) -> Option<PathBuf> {
     Some(PathBuf::from(path.value()))
 }
 
-fn select_modules(main: &File, library: &Library, crate_name: &str) -> BTreeSet<ModulePath> {
-    let mut selected = BTreeSet::new();
+fn select_library(main: &File, library: &Library, crate_name: &str) -> Selection {
+    let mut selected = Selection::default();
     let mut queue = VecDeque::new();
     for dependency in dependencies(main, &[], library, crate_name, true) {
-        add_module(&dependency, &mut selected, &mut queue);
+        add_dependency(dependency, &mut selected, &mut queue);
     }
 
     while let Some(module) = queue.pop_front() {
@@ -300,22 +314,34 @@ fn select_modules(main: &File, library: &Library, crate_name: &str) -> BTreeSet<
             continue;
         };
         for dependency in dependencies(&info.syntax, &module, library, crate_name, false) {
-            add_module(&dependency, &mut selected, &mut queue);
+            add_dependency(dependency, &mut selected, &mut queue);
         }
     }
     selected
 }
 
-fn add_module(
-    module: &[String],
-    selected: &mut BTreeSet<ModulePath>,
+fn add_dependency(
+    dependency: Dependency,
+    selected: &mut Selection,
     queue: &mut VecDeque<ModulePath>,
 ) {
-    for length in 1..=module.len() {
-        let ancestor = module[..length].to_vec();
-        if selected.insert(ancestor.clone()) {
+    for length in 1..=dependency.module.len() {
+        let ancestor = dependency.module[..length].to_vec();
+        if selected.modules.insert(ancestor.clone()) {
             queue.push_back(ancestor);
         }
+    }
+
+    let entry = selected
+        .items
+        .entry(dependency.module)
+        .or_insert_with(|| Some(BTreeSet::new()));
+    match (entry, dependency.item) {
+        (slot @ Some(_), None) => *slot = None,
+        (Some(items), Some(item)) => {
+            items.insert(item);
+        }
+        (None, _) => {}
     }
 }
 
@@ -325,7 +351,7 @@ fn dependencies(
     library: &Library,
     crate_name: &str,
     is_main: bool,
-) -> BTreeSet<ModulePath> {
+) -> BTreeSet<Dependency> {
     let mut syntax = syntax.clone();
     prune_tests(&mut syntax.items);
     let mut collector = PathCollector::default();
@@ -334,6 +360,9 @@ fn dependencies(
 
     for raw in collector.paths {
         if raw.is_empty() {
+            continue;
+        }
+        if !is_main && raw.len() == 1 && raw[0] == "self" {
             continue;
         }
         let candidate = if is_main {
@@ -365,11 +394,18 @@ fn dependencies(
         };
 
         if let Some(module) = longest_module_prefix(&candidate, &library.modules) {
-            result.insert(module);
+            let item = candidate
+                .get(module.len())
+                .filter(|name| name.as_str() != "self")
+                .cloned();
+            result.insert(Dependency { module, item });
         } else if is_main {
             if let Some(name) = candidate.last() {
                 if let Some(module) = library.exported_macros.get(name) {
-                    result.insert(module.clone());
+                    result.insert(Dependency {
+                        module: module.clone(),
+                        item: None,
+                    });
                 }
             }
         }
@@ -531,20 +567,23 @@ fn inline_module(
     path: &[String],
     declaration: &ItemMod,
     library: &Library,
-    selected: &BTreeSet<ModulePath>,
+    selected: &Selection,
 ) -> Result<ItemMod> {
     let info = library
         .modules
         .get(path)
         .with_context(|| format!("module {} が index にありません", path.join("::")))?;
     let mut items = info.syntax.items.clone();
+    if let Some(Some(item_names)) = selected.items.get(path) {
+        prune_unselected_items(&mut items, item_names);
+    }
     let mut expanded = Vec::new();
     for item in items.drain(..) {
         if let Item::Mod(child) = &item {
             if child.content.is_none() {
                 let mut child_path = path.to_vec();
                 child_path.push(child.ident.to_string());
-                if selected.contains(&child_path) {
+                if selected.modules.contains(&child_path) {
                     expanded.push(Item::Mod(inline_module(
                         &child_path,
                         &library.modules[&child_path].declaration,
@@ -567,6 +606,104 @@ fn inline_module(
     module.content = Some((syn::token::Brace::default(), expanded));
     module.semi = None;
     Ok(module)
+}
+
+fn prune_unselected_items(items: &mut Vec<Item>, selected: &BTreeSet<String>) {
+    let named_items = items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| item_name(item).map(|name| (name, index)))
+        .collect::<BTreeMap<_, _>>();
+    let mut retained_names = selected.clone();
+    let mut retained = vec![false; items.len()];
+
+    loop {
+        let mut changed = false;
+
+        for name in retained_names.clone() {
+            if let Some(&index) = named_items.get(&name) {
+                if !retained[index] {
+                    retained[index] = true;
+                    changed = true;
+                }
+            }
+        }
+
+        for (index, item) in items.iter().enumerate() {
+            let keep_unnamed = matches!(item, Item::Use(_) | Item::ExternCrate(_) | Item::Macro(_));
+            let keep_impl = match item {
+                Item::Impl(item_impl) => impl_names(item_impl)
+                    .iter()
+                    .any(|name| retained_names.contains(name)),
+                _ => false,
+            };
+            if (keep_unnamed || keep_impl) && !retained[index] {
+                retained[index] = true;
+                changed = true;
+            }
+        }
+
+        for (index, item) in items.iter().enumerate() {
+            if !retained[index] {
+                continue;
+            }
+            let mut collector = PathCollector::default();
+            collector.visit_item(item);
+            for path in collector.paths {
+                let Some(name) = path.first() else {
+                    continue;
+                };
+                if named_items.contains_key(name) && retained_names.insert(name.clone()) {
+                    changed = true;
+                }
+            }
+        }
+
+        if !changed {
+            break;
+        }
+    }
+
+    let mut index = 0;
+    items.retain(|_| {
+        let keep = retained[index];
+        index += 1;
+        keep
+    });
+}
+
+fn item_name(item: &Item) -> Option<String> {
+    let identifier = match item {
+        Item::Const(item) => &item.ident,
+        Item::Enum(item) => &item.ident,
+        Item::Fn(item) => &item.sig.ident,
+        Item::Mod(item) => &item.ident,
+        Item::Static(item) => &item.ident,
+        Item::Struct(item) => &item.ident,
+        Item::Trait(item) => &item.ident,
+        Item::TraitAlias(item) => &item.ident,
+        Item::Type(item) => &item.ident,
+        Item::Union(item) => &item.ident,
+        _ => return None,
+    };
+    Some(identifier.to_string())
+}
+
+fn impl_names(item: &syn::ItemImpl) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    if let Some((_, path, _)) = &item.trait_ {
+        if let Some(segment) = path.segments.last() {
+            names.insert(segment.ident.to_string());
+        }
+    }
+    let mut collector = PathCollector::default();
+    collector.visit_type(&item.self_ty);
+    for path in collector.paths {
+        if let Some(name) = path.last() {
+            names.insert(name.clone());
+        }
+    }
+    names
 }
 
 fn prune_tests(items: &mut Vec<Item>) {
@@ -815,8 +952,8 @@ mod tests {
     use std::fs;
 
     use super::{
-        collect_use_tree, compile_with_cargo, filter_macro_imports, format_size, select_modules,
-        Library, ModulePath,
+        collect_use_tree, compile_with_cargo, filter_macro_imports, format_size, inline_module,
+        item_name, select_library, Library, ModulePath,
     };
 
     #[test]
@@ -860,9 +997,90 @@ mod tests {
 
         let library = Library::load(&source.join("lib.rs")).unwrap();
         let main = syn::parse_file("use sample::a::make; fn main() { let _ = make(); }").unwrap();
-        let selected = select_modules(&main, &library, "sample");
-        assert!(selected.contains(&vec!["a".into()]));
-        assert!(selected.contains(&vec!["b".into()]));
+        let selected = select_library(&main, &library, "sample");
+        assert!(selected.modules.contains(&vec!["a".into()]));
+        assert!(selected.modules.contains(&vec!["b".into()]));
+    }
+
+    #[test]
+    fn keeps_only_reachable_items_for_an_explicit_function_import() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("src");
+        fs::create_dir_all(source.join("lib")).unwrap();
+        fs::write(
+            source.join("lib.rs"),
+            "#[path = \"lib/string.rs\"] pub mod string;\n",
+        )
+        .unwrap();
+        fs::write(
+            source.join("lib/string.rs"),
+            "\
+pub fn manacher() -> usize { helper() }
+fn helper() -> usize { 1 }
+pub trait SequenceExt { fn is_palindrome(&self) -> bool; }
+impl SequenceExt for str { fn is_palindrome(&self) -> bool { true } }
+pub trait DecimalDigitsExt { fn parse_usize(&self) -> Option<usize>; }
+",
+        )
+        .unwrap();
+
+        let library = Library::load(&source.join("lib.rs")).unwrap();
+        let main =
+            syn::parse_file("use sample::string::manacher; fn main() { let _ = manacher(); }")
+                .unwrap();
+        let selected = select_library(&main, &library, "sample");
+        let path = vec!["string".into()];
+        let declaration = library.root.items.iter().find_map(|item| match item {
+            syn::Item::Mod(module) => Some(module),
+            _ => None,
+        });
+        let module = inline_module(&path, declaration.unwrap(), &library, &selected).unwrap();
+        let names = module
+            .content
+            .unwrap()
+            .1
+            .iter()
+            .filter_map(item_name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, ["manacher", "helper"]);
+    }
+
+    #[test]
+    fn excludes_string_extension_traits_when_only_manacher_is_imported() {
+        let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let library = Library::load(&project.join("src/lib.rs")).unwrap();
+        let main = syn::parse_file(
+            "use atcoder::string::manacher; fn main() { let _ = manacher(b\"\"); }",
+        )
+        .unwrap();
+        let selected = select_library(&main, &library, "atcoder");
+        let path = vec!["string".into()];
+        let declaration = library.root.items.iter().find_map(|item| match item {
+            syn::Item::Mod(module) if module.ident == "string" => Some(module),
+            _ => None,
+        });
+        let module = inline_module(&path, declaration.unwrap(), &library, &selected).unwrap();
+        let names = module
+            .content
+            .as_ref()
+            .unwrap()
+            .1
+            .iter()
+            .filter_map(item_name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, ["manacher"]);
+
+        let mut bundle =
+            syn::parse_file("use crate::string::manacher; fn main() { let _ = manacher(b\"\"); }")
+                .unwrap();
+        bundle.items.insert(0, syn::Item::Mod(module));
+        let source = tempfile::tempdir().unwrap();
+        let output = source.path().join("bundle.rs");
+        fs::write(&output, prettyplease::unparse(&bundle)).unwrap();
+        let manifest = toml::from_str("").unwrap();
+        compile_with_cargo(&output, "2021", &manifest, source.path()).unwrap();
     }
 
     #[test]
