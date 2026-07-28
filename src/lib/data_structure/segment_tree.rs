@@ -1,5 +1,6 @@
 //! 点更新・区間集約を行うセグメント木です。
 
+use std::fmt::Debug;
 use std::ops::Index;
 
 /// モノイド `(T, op, identity)` 上のセグメント木です。
@@ -14,9 +15,9 @@ use std::ops::Index;
 /// use atcoder::data_structure::segment_tree::SegmentTree;
 ///
 /// let mut tree = SegmentTree::from_vec([1, 2, 3, 4], |a, b| a + b, 0);
-/// assert_eq!(tree.fold(1, 4), 9);
+/// assert_eq!(tree.get(1, 4), 9);
 /// tree.set(2, 10);
-/// assert_eq!(tree.fold(0, 3), 13);
+/// assert_eq!(tree.get(0, 3), 13);
 /// ```
 #[derive(Clone)]
 pub struct SegmentTree<T, F> {
@@ -87,13 +88,6 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         }
     }
 
-    /// `index` 番目を `value` に更新します。
-    ///
-    /// [`set`](Self::set) と同じです。
-    pub fn apply(&mut self, index: usize, value: T) {
-        self.set(index, value);
-    }
-
     /// `index` 番目の値を返します。範囲外なら panic します。
     pub fn at(&self, index: usize) -> T {
         assert!(index < self.len, "index out of bounds");
@@ -103,7 +97,7 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
     /// 半開区間 `[left, right)` の集約値を返します。
     ///
     /// `left > right` または `right > len` の場合は panic します。空区間には単位元を返します。
-    pub fn fold(&self, left: usize, right: usize) -> T {
+    pub fn get(&self, left: usize, right: usize) -> T {
         assert!(left <= right && right <= self.len, "range out of bounds");
         let mut left = left + self.size;
         let mut right = right + self.size;
@@ -124,14 +118,7 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         (self.op)(left_value, right_value)
     }
 
-    /// 半開区間 `[left, right)` の集約値を返します。
-    ///
-    /// [`fold`](Self::fold) と同じです。
-    pub fn get(&self, left: usize, right: usize) -> T {
-        self.fold(left, right)
-    }
-
-    /// `predicate(fold(left, right))` が真である最大の `right` を返します。
+    /// `predicate(get(left, right))` が真である最大の `right` を返します。
     ///
     /// `predicate(identity)` は真で、集約区間を伸ばしたとき単調である必要があります。
     pub fn max_right<P>(&self, mut left: usize, predicate: P) -> usize
@@ -170,7 +157,7 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         self.len
     }
 
-    /// `predicate(fold(left, right))` が真である最小の `left` を返します。
+    /// `predicate(get(left, right))` が真である最小の `left` を返します。
     ///
     /// `predicate(identity)` は真で、集約区間を左へ伸ばしたとき単調である必要があります。
     pub fn min_left<P>(&self, mut right: usize, predicate: P) -> usize
@@ -210,6 +197,13 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
     }
 }
 
+impl<T: Debug, F> SegmentTree<T, F> {
+    /// 葉のうち、元配列に対応する要素だけをデバッグ出力します。
+    pub fn debug_values(&self) {
+        crate::debug!("{:?}", &self.data[self.size..self.size + self.len]);
+    }
+}
+
 impl<T, F> Index<usize> for SegmentTree<T, F> {
     type Output = T;
 
@@ -224,10 +218,16 @@ mod tests {
     use super::SegmentTree;
 
     #[test]
-    fn folds_and_searches() {
+    fn gets_and_searches() {
         let tree = SegmentTree::from_vec(vec![1, 2, 3, 4], |a, b| a + b, 0);
-        assert_eq!(tree.fold(1, 3), 5);
+        assert_eq!(tree.get(1, 3), 5);
         assert_eq!(tree.max_right(0, |sum| sum <= 5), 2);
         assert_eq!(tree.min_left(4, |sum| sum <= 7), 2);
+    }
+
+    #[test]
+    fn debug_values_accepts_empty_and_non_power_of_two_trees() {
+        SegmentTree::from_vec(Vec::<i32>::new(), |a, b| a + b, 0).debug_values();
+        SegmentTree::from_vec(vec![1, 2, 3], |a, b| a + b, 0).debug_values();
     }
 }
