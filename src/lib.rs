@@ -25,3 +25,5 @@ pub mod math;
 pub mod random;
 #[path = "lib/string.rs"]
 pub mod string;
+#[path = "lib/types.rs"]
+pub mod types;
