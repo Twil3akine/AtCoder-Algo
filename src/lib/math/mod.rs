@@ -5,4 +5,5 @@ pub mod fast_math;
 pub mod integer;
 pub mod mod_int;
 pub mod radix;
+pub mod saturating_usize;
 pub mod sieve;
