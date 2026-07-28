@@ -7,31 +7,49 @@ use std::ops::{Bound, RangeBounds};
 /// `char` と `u8` に実装されています。ASCII 英字以外を渡した結果は意味を持ちません。
 pub trait AlphaExt {
     /// 大文字・小文字を区別せず、`a` を `0`、`z` を `25` として返します。
-    fn alphabet_index(self) -> usize;
-
-    /// 大文字・小文字を区別せず、`a` を `0`、`z` を `25` として返します。
-    ///
-    /// [`alphabet_index`](Self::alphabet_index) と同じです。
     fn to_idx(self) -> usize;
 }
 
 impl AlphaExt for char {
-    fn alphabet_index(self) -> usize {
-        (self.to_ascii_lowercase() as u8 - b'a') as usize
-    }
-
     fn to_idx(self) -> usize {
-        self.alphabet_index()
+        (self.to_ascii_lowercase() as u8 - b'a') as usize
     }
 }
 
 impl AlphaExt for u8 {
-    fn alphabet_index(self) -> usize {
+    fn to_idx(self) -> usize {
         (self.to_ascii_lowercase() - b'a') as usize
     }
+}
 
-    fn to_idx(self) -> usize {
-        self.alphabet_index()
+/// `0..26` の添字を小文字の ASCII 英字へ変換します。
+///
+/// `usize` と `u8` に実装されています。`26` 以上の値を渡すと panic します。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::string::AlphaIndexExt;
+///
+/// assert_eq!(0_usize.to_alpha(), 'a');
+/// assert_eq!(25_u8.to_alpha(), 'z');
+/// ```
+pub trait AlphaIndexExt {
+    /// `0` を `a`、`25` を `z` として返します。
+    fn to_alpha(self) -> char;
+}
+
+impl AlphaIndexExt for usize {
+    fn to_alpha(self) -> char {
+        assert!(self < 26, "alphabet index out of range");
+        char::from(b'a' + self as u8)
+    }
+}
+
+impl AlphaIndexExt for u8 {
+    fn to_alpha(self) -> char {
+        assert!(self < 26, "alphabet index out of range");
+        char::from(b'a' + self)
     }
 }
 
@@ -267,12 +285,26 @@ impl DecimalDigitsExt for [char] {
 
 #[cfg(test)]
 mod tests {
-    use super::{manacher, AlphaExt, DecimalDigitsExt};
+    use super::{manacher, AlphaExt, AlphaIndexExt, DecimalDigitsExt};
 
     #[test]
     fn finds_even_palindrome() {
         assert_eq!(manacher(b"abba")[4] - 1, 4);
-        assert_eq!(b'Z'.alphabet_index(), 25);
+        assert_eq!(b'Z'.to_idx(), 25);
+    }
+
+    #[test]
+    fn converts_alphabet_indices_to_lowercase_letters() {
+        assert_eq!(0_usize.to_alpha(), 'a');
+        assert_eq!(25_usize.to_alpha(), 'z');
+        assert_eq!(0_u8.to_alpha(), 'a');
+        assert_eq!(25_u8.to_alpha(), 'z');
+    }
+
+    #[test]
+    #[should_panic(expected = "alphabet index out of range")]
+    fn rejects_invalid_alphabet_index() {
+        26_usize.to_alpha();
     }
 
     #[test]
