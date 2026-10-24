@@ -1,5 +1,6 @@
 //! 整数座標の2次元幾何を扱います。
 
+use std::cmp::Ordering;
 use std::ops::{Add, Mul, Sub};
 
 /// 整数座標上の点またはベクトルです。
@@ -98,6 +99,31 @@ impl Mul<isize> for Point {
     }
 }
 
+/// 原点から見た2点の偏角を比較します。
+///
+/// 正のx軸を始点に反時計回りで比較し、同じ向きなら [`Ordering::Equal`] を返します。
+/// 原点は含めず、座標同士の積が `isize` に収まる範囲で使用してください。
+/// 計算量は `O(1)` です。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::geometry::{argcmp, Point};
+///
+/// let mut points = [Point::new(0, -1), Point::new(0, 1), Point::new(1, 0)];
+/// points.sort_by(|&a, &b| argcmp(a, b));
+/// assert_eq!(points, [Point::new(1, 0), Point::new(0, 1), Point::new(0, -1)]);
+/// ```
+///
+/// # 参考
+///
+/// ngtkanaさんの[整数演算による偏角ソートの記事](https://blog.ngtkana.com/entry/2021/11/13/202103)を参考にしています。
+pub fn argcmp(a: Point, b: Point) -> Ordering {
+    ((a.y, a.x) < (0, 0))
+        .cmp(&((b.y, b.x) < (0, 0)))
+        .then((b.x * a.y).cmp(&(a.x * b.y)))
+}
+
 /// 3点 `a`, `b`, `c` の向きを外積で返します。
 ///
 /// 正なら反時計回り、負なら時計回り、`0` なら一直線上です。計算量は `O(1)` です。
@@ -165,7 +191,41 @@ pub fn polygon_area2(points: &[Point]) -> isize {
 
 #[cfg(test)]
 mod tests {
-    use super::{polygon_area2, segments_intersect, Point};
+    use std::cmp::Ordering;
+
+    use super::{argcmp, polygon_area2, segments_intersect, Point};
+
+    #[test]
+    fn compares_polar_angles_counterclockwise_from_positive_x_axis() {
+        let points = [
+            Point::new(1, 0),
+            Point::new(1, 1),
+            Point::new(0, 1),
+            Point::new(-1, 1),
+            Point::new(-1, 0),
+            Point::new(-1, -1),
+            Point::new(0, -1),
+            Point::new(1, -1),
+        ];
+        for (i, &a) in points.iter().enumerate() {
+            for (j, &b) in points.iter().enumerate() {
+                assert_eq!(argcmp(a, b), i.cmp(&j));
+            }
+        }
+    }
+
+    #[test]
+    fn compares_same_direction_vectors_as_equal() {
+        assert_eq!(argcmp(Point::new(1, 2), Point::new(2, 4)), Ordering::Equal);
+        assert_eq!(
+            argcmp(Point::new(-1, -2), Point::new(-2, -4)),
+            Ordering::Equal
+        );
+        assert_ne!(
+            argcmp(Point::new(1, 2), Point::new(-1, -2)),
+            Ordering::Equal
+        );
+    }
 
     #[test]
     fn detects_touching_and_disjoint_segments() {

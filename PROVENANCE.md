@@ -40,6 +40,19 @@
 | `src/lib/string.rs` | UNKNOWN | UNKNOWN_ORIGIN | UNKNOWN | UNKNOWN | UNKNOWN |
 | `src/lib/types.rs` | UNKNOWN | UNKNOWN_ORIGIN | UNKNOWN | UNKNOWN | UNKNOWN |
 
+## 2026年10月24日追記：`geometry::argcmp`
+
+`src/main.rs`にあった偏角の比較関数を、比較処理を変えずに`src/lib/geometry.rs`へ移設しました。
+移設前のコメントに記載されていた[ngtkanaさんの記事](https://blog.ngtkana.com/entry/2021/11/13/202103)で、
+半平面による分類と座標の積による比較を確認し、関数のドキュメントにも参考元を残しています。
+
+参照した記事ではコードのライセンス表記を確認できなかったため、利用許諾の確認状況は`UNKNOWN`です。
+今回の移設とドキュメント整備には生成AIを使用しています。移設前の実装に生成AIが使われたかは`UNKNOWN`です。
+この記録は上表の調査開始時点の記録に対する追記であり、geometry内の他の関数の出所を確定するものではありません。
+
+ABC・ARC・AGCの開催中に利用する場合は、[20261014版の公式ルール](https://info.atcoder.jp/entry/llm-rules-ja)に従い、
+この変更を含む版をコンテスト開始前に公開し、提出コード内に参照URLを含める必要があります。
+
 ## Python エントリーファイル
 
 `main.py` は共有ライブラリではなく、問題ごとの解答を記述するためのエントリーテンプレートとして別に記録します。現状の内容と履歴から、自己著作、外部出所、ライセンス、AIによる生成・改変はいずれも確認できません。
