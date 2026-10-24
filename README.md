@@ -123,8 +123,8 @@ cargo bundle
 ```
 
 生成コードは`target/bundle.rs`へ保存されます。rustdocコメントと`#[cfg(test)]`の項目を除去し、
-単一ファイルへ展開した後、現在のpackageと同じeditionを指定して`rustc`でコンパイルします。
-コンパイル成功時だけmacOSの`pbcopy`でクリップボードへコピーします。
+単一ファイルへ展開した後、現在のpackageと同じedition・依存関係で`cargo check`を行います。
+検証成功時だけmacOSの`pbcopy`でクリップボードへコピーします。
 
 ```text
 Bundled 2 modules:
@@ -133,7 +133,7 @@ io
 
 Bundle size: 12.3 KiB -> 8.1 KiB
 
-✓ rustc compilation succeeded
+✓ cargo check succeeded
 ✓ copied to clipboard
 ✓ wrote target/bundle.rs
 ```
@@ -144,6 +144,45 @@ Bundle size: 12.3 KiB -> 8.1 KiB
 cargo bundle --no-clipboard
 cargo bundle --output /tmp/submission.rs
 ```
+
+### ABC・ARC・AGCの事前作成コードへの参照
+
+最終的な提出文字列の先頭には、次の形式のコメントを必ず追加します。ASTの再出力後に
+付加するため、通常コメントやrustdocの削除処理では失われません。保存するファイルと
+クリップボードには同じ文字列を渡します。
+
+```rust
+// Pre-contest code reference:
+// https://github.com/Twil3akine/AtCoder-Algo/commit/<40文字のSHA>
+```
+
+既定の参照はローカルの`origin/master`を固定SHAへ解決したものです。コンテスト前に
+公開した版を指定する場合は、完全なSHAを渡してください。
+
+```sh
+cargo bundle --reference-commit <40文字のSHA> --no-clipboard
+```
+
+バンドラーはGitとcurlを使い、次の両方を確認してから出力します。
+
+- `src/lib.rs`と、今回展開する各ライブラリファイルの内容が参照コミットと一致すること。
+  ファイル単位で照合するため、未使用項目やコメントだけの変更でも不一致になります。
+  `src/main.rs`の問題固有コードは照合対象に含めません。
+- 指定SHAを、このリポジトリのGitHub APIから認証なしで取得できること。
+  ローカルコミットの存在や`origin/master`だけでは公開済みと認定しません。
+
+GitHubへの接続失敗、API制限、参照不能、ライブラリの不一致では
+`pre-contest reference is not confirmed as publicly available`というエラーで停止し、
+既存の出力ファイルとクリップボードを更新しません。通常のCargo依存はソースへ展開しません。
+
+この確認で分かるのは実行時点の公開状態です。コンテスト開始前の公開を自動証明する機能は
+ありません。利用するライブラリは開始前に公開し、第三者が内容と公開時刻を確認できる記録を
+用意してください。コミット日時だけを公開時刻の証明には使えません。
+[AtCoder公式ルール（20261014版）](https://info.atcoder.jp/entry/llm-rules-ja)と
+[変更告知](https://atcoder.jp/posts/algorithm_rules_20261014_ja)に基づく対応です。
+
+由来とライセンスの確認状況は[PROVENANCE.md](PROVENANCE.md)に記録しています。
+参照URLの付加は、出所不明コードの利用許諾や、必要な著作権表示の保持を代替しません。
 
 バンドラーはローカルpackageのソースを直接処理します。ブラウザのUserscriptがrunnerへ送る
 単一ファイルの`sourceCode`形式とrunner APIには変更を加えていないため、既存のAtCoder / Codeforces

@@ -11,6 +11,9 @@ use syn::{Attribute, File, Item, ItemMod, Path as SynPath, UseTree};
 
 type ModulePath = Vec<String>;
 
+const REFERENCE_REPOSITORY: &str = "Twil3akine/AtCoder-Algo";
+const REFERENCE_ERROR: &str = "pre-contest reference is not confirmed as publicly available";
+
 #[derive(Default)]
 struct Selection {
     modules: BTreeSet<ModulePath>,
@@ -26,11 +29,13 @@ struct Dependency {
 #[derive(Clone)]
 struct ModuleInfo {
     file: PathBuf,
+    source: String,
     syntax: File,
     declaration: ItemMod,
 }
 
 struct Library {
+    root_source: String,
     root: File,
     modules: BTreeMap<ModulePath, ModuleInfo>,
     exported_macros: BTreeMap<String, ModulePath>,
@@ -39,6 +44,7 @@ struct Library {
 struct Options {
     copy_to_clipboard: bool,
     output: Option<PathBuf>,
+    reference_commit: Option<String>,
 }
 
 fn main() {
@@ -73,6 +79,9 @@ fn run() -> Result<()> {
     let library = Library::load(&library_file)?;
 
     let selected = select_library(&main_syntax, &library, &crate_name);
+    let reference_commit = resolve_reference_commit(&project, options.reference_commit.as_deref())?;
+    verify_library_sources(&project, &library, &selected, &reference_commit)?;
+    confirm_public_reference(&reference_commit)?;
     let mut bundled_modules = Vec::new();
     for item in &library.root.items {
         let Item::Mod(declaration) = item else {
@@ -107,7 +116,7 @@ fn run() -> Result<()> {
         bundled_modules.into_iter().map(Item::Mod),
     );
 
-    let bundled = prettyplease::unparse(&main_syntax);
+    let bundled = render_submission(&main_syntax, &reference_commit);
     let output = options
         .output
         .map(|path| project.join(path))
@@ -164,6 +173,7 @@ fn parse_options() -> Result<Options> {
     let mut options = Options {
         copy_to_clipboard: true,
         output: None,
+        reference_commit: None,
     };
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
@@ -174,8 +184,17 @@ fn parse_options() -> Result<Options> {
                     arguments.next().context("--output にはパスが必要です")?,
                 ));
             }
+            "--reference-commit" => {
+                options.reference_commit = Some(
+                    arguments
+                        .next()
+                        .context("--reference-commit requires a full commit SHA")?,
+                );
+            }
             "-h" | "--help" => {
-                println!("Usage: cargo bundle [--no-clipboard] [--output PATH]");
+                println!(
+                    "Usage: cargo bundle [--no-clipboard] [--output PATH] [--reference-commit SHA]"
+                );
                 std::process::exit(0);
             }
             _ => bail!("不明な引数です: {argument}"),
@@ -201,11 +220,131 @@ fn read_manifest(path: &Path) -> Result<toml::Value> {
     toml::from_str(&source).with_context(|| format!("{} を解析できません", path.display()))
 }
 
+fn reference_git(project: &Path, arguments: &[&str]) -> Result<Vec<u8>> {
+    let output = Command::new("git")
+        .arg("--no-replace-objects")
+        .arg("-C")
+        .arg(project)
+        .args(arguments)
+        .output()
+        .with_context(|| format!("{REFERENCE_ERROR}: cannot run git"))?;
+    if !output.status.success() {
+        bail!(
+            "{REFERENCE_ERROR}: git failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(output.stdout)
+}
+
+fn resolve_reference_commit(project: &Path, requested: Option<&str>) -> Result<String> {
+    let commit = match requested {
+        Some(commit) => commit.to_owned(),
+        None => String::from_utf8(reference_git(
+            project,
+            &[
+                "rev-parse",
+                "--verify",
+                "refs/remotes/origin/master^{commit}",
+            ],
+        )?)?
+        .trim()
+        .to_owned(),
+    };
+    if commit.len() != 40 || !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        bail!("{REFERENCE_ERROR}: reference must be a full 40-character commit SHA");
+    }
+    let commit = commit.to_ascii_lowercase();
+    let kind = reference_git(project, &["cat-file", "-t", &commit])?;
+    if kind != b"commit\n" {
+        bail!("{REFERENCE_ERROR}: reference is not a commit");
+    }
+    Ok(commit)
+}
+
+fn verify_library_sources(
+    project: &Path,
+    library: &Library,
+    selected: &Selection,
+    commit: &str,
+) -> Result<()> {
+    let root = String::from_utf8(reference_git(project, &["rev-parse", "--show-toplevel"])?)?;
+    let root = Path::new(root.trim());
+    let root_file = project.join("src/lib.rs");
+    let sources = std::iter::once((root_file.as_path(), library.root_source.as_str())).chain(
+        selected.modules.iter().map(|path| {
+            let module = &library.modules[path];
+            (module.file.as_path(), module.source.as_str())
+        }),
+    );
+    for (file, source) in sources {
+        let relative = file.strip_prefix(root).with_context(|| {
+            format!(
+                "{REFERENCE_ERROR}: library is outside the Git repository: {}",
+                file.display()
+            )
+        })?;
+        let object = format!("{commit}:{}", relative.display());
+        let published = reference_git(project, &["cat-file", "blob", &object])?;
+        if source.as_bytes() != published {
+            bail!(
+                "{REFERENCE_ERROR}: {} differs from reference commit {commit}; publish the reusable library before the contest",
+                relative.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn confirm_public_reference(commit: &str) -> Result<()> {
+    // Disable curl's config so a personal Authorization header or netrc option cannot
+    // turn an authenticated-only commit into a supposedly public reference.
+    let output = Command::new("curl")
+        .args([
+            "--disable",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-time",
+            "20",
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "%{http_code}",
+        ])
+        .arg(format!(
+            "https://api.github.com/repos/{REFERENCE_REPOSITORY}/commits/{commit}"
+        ))
+        .output()
+        .with_context(|| format!("{REFERENCE_ERROR}: cannot run anonymous curl verification"))?;
+    if !output.status.success() || output.stdout != b"200" {
+        bail!(
+            "{REFERENCE_ERROR}: anonymous GitHub request failed (HTTP {}): {}",
+            String::from_utf8_lossy(&output.stdout).trim(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
+fn render_submission(syntax: &File, commit: &str) -> String {
+    let source = prettyplease::unparse(syntax);
+    format!(
+        "// Pre-contest code reference:\n// https://github.com/{REFERENCE_REPOSITORY}/commit/{commit}\n\n{source}"
+    )
+}
+
 impl Library {
     fn load(root_file: &Path) -> Result<Self> {
         let source = fs::read_to_string(root_file)?;
         let root = syn::parse_file(&source).context("src/lib.rs の構文解析に失敗しました")?;
         let mut library = Self {
+            root_source: source,
             root: root.clone(),
             modules: BTreeMap::new(),
             exported_macros: BTreeMap::new(),
@@ -254,6 +393,7 @@ impl Library {
                 path.clone(),
                 ModuleInfo {
                     file: file.clone(),
+                    source,
                     syntax: syntax.clone(),
                     declaration,
                 },
