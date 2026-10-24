@@ -139,7 +139,7 @@ fn bundles_verified_library_and_copies_the_header_and_code() {
     let bundled = fs::read(fixture.root().join("target/bundle.rs")).unwrap();
     let bundled = String::from_utf8(bundled).unwrap();
     let header = format!(
-        "// Pre-contest code reference:\n// https://github.com/Twil3akine/AtCoder-Algo/commit/{}\n\n",
+        "// https://github.com/Twil3akine/AtCoder-Algo/commit/{}\n\n",
         fixture.reference
     );
     assert!(bundled.starts_with(&header));
@@ -248,7 +248,7 @@ fn resolves_default_origin_master_reference() {
     );
     let bundled = fs::read_to_string(fixture.root().join("target/bundle.rs")).unwrap();
     assert!(bundled.starts_with(&format!(
-        "// Pre-contest code reference:\n// https://github.com/Twil3akine/AtCoder-Algo/commit/{}\n\n",
+        "// https://github.com/Twil3akine/AtCoder-Algo/commit/{}\n\n",
         fixture.reference
     )));
     assert!(!fixture.clipboard.exists());

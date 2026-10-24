@@ -335,7 +335,7 @@ fn confirm_public_reference(commit: &str) -> Result<()> {
 fn render_submission(syntax: &File, commit: &str) -> String {
     let source = prettyplease::unparse(syntax);
     format!(
-        "// Pre-contest code reference:\n// https://github.com/{REFERENCE_REPOSITORY}/commit/{commit}\n\n{source}"
+        "// https://github.com/{REFERENCE_REPOSITORY}/commit/{commit}\n\n{source}"
     )
 }
 

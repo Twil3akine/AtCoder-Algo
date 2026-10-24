@@ -147,12 +147,11 @@ cargo bundle --output /tmp/submission.rs
 
 ### ABC・ARC・AGCの事前作成コードへの参照
 
-最終的な提出文字列の先頭には、次の形式のコメントを必ず追加します。ASTの再出力後に
+最終的な提出文字列の1行目には、参照URLのコメントを必ず追加します。ASTの再出力後に
 付加するため、通常コメントやrustdocの削除処理では失われません。保存するファイルと
 クリップボードには同じ文字列を渡します。
 
 ```rust
-// Pre-contest code reference:
 // https://github.com/Twil3akine/AtCoder-Algo/commit/<40文字のSHA>
 ```
 
