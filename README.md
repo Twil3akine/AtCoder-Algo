@@ -122,8 +122,9 @@ cargo doc --no-deps --open
 cargo bundle
 ```
 
-生成コードは`target/bundle.rs`へ保存されます。rustdocコメントと`#[cfg(test)]`の項目を除去し、
-単一ファイルへ展開した後、現在のpackageと同じedition・依存関係で`cargo check`を行います。
+生成コードは`target/bundle.rs`へ保存されます。ソースコメントとrustdocコメントを保ったまま
+`#[cfg(test)]`の項目を除去して単一ファイルへ展開し、現在のpackageと同じedition・依存関係で
+`rustfmt`による整形と`cargo check`を行います。
 検証成功時だけmacOSの`pbcopy`でクリップボードへコピーします。
 
 ```text
@@ -147,8 +148,7 @@ cargo bundle --output /tmp/submission.rs
 
 ### ABC・ARC・AGCの事前作成コードへの参照
 
-最終的な提出文字列の1行目には、参照URLのコメントを必ず追加します。ASTの再出力後に
-付加するため、通常コメントやrustdocの削除処理では失われません。保存するファイルと
+最終的な提出文字列の1行目には、参照URLのコメントを必ず追加します。保存するファイルと
 クリップボードには同じ文字列を渡します。
 
 ```rust

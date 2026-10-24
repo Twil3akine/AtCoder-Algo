@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::Write;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context, Result};
+use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
-use syn::visit_mut::{self, VisitMut};
 use syn::{Attribute, File, Item, ItemMod, Path as SynPath, UseTree};
 
 type ModulePath = Vec<String>;
@@ -31,7 +32,6 @@ struct ModuleInfo {
     file: PathBuf,
     source: String,
     syntax: File,
-    declaration: ItemMod,
 }
 
 struct Library {
@@ -74,7 +74,7 @@ fn run() -> Result<()> {
     let library_file = project.join("src/lib.rs");
     let main_source = fs::read_to_string(&main_file)
         .with_context(|| format!("{} を読み取れません", main_file.display()))?;
-    let mut main_syntax =
+    let main_syntax =
         syn::parse_file(&main_source).context("src/main.rs の構文解析に失敗しました")?;
     let library = Library::load(&library_file)?;
 
@@ -82,41 +82,15 @@ fn run() -> Result<()> {
     let reference_commit = resolve_reference_commit(&project, options.reference_commit.as_deref())?;
     verify_library_sources(&project, &library, &selected, &reference_commit)?;
     confirm_public_reference(&reference_commit)?;
-    let mut bundled_modules = Vec::new();
-    for item in &library.root.items {
-        let Item::Mod(declaration) = item else {
-            continue;
-        };
-        let path = vec![declaration.ident.to_string()];
-        if selected.modules.contains(&path) {
-            bundled_modules.push(inline_module(&path, declaration, &library, &selected)?);
-        }
-    }
-
-    remove_root_macro_imports(
-        &mut main_syntax.items,
+    let bundled = render_submission(
+        &main_source,
+        &main_syntax,
+        &library,
+        &selected,
         &crate_name,
-        &library.exported_macros,
-    );
-    CratePathRewriter {
-        crate_name: &crate_name,
-    }
-    .visit_file_mut(&mut main_syntax);
-    prune_tests(&mut main_syntax.items);
-    strip_docs_from_items(&mut main_syntax.items);
-    strip_doc_attributes(&mut main_syntax.attrs);
-
-    let insertion = main_syntax
-        .items
-        .iter()
-        .position(|item| !matches!(item, Item::ExternCrate(_) | Item::Use(_)))
-        .unwrap_or(main_syntax.items.len());
-    main_syntax.items.splice(
-        insertion..insertion,
-        bundled_modules.into_iter().map(Item::Mod),
-    );
-
-    let bundled = render_submission(&main_syntax, &reference_commit);
+        &reference_commit,
+    )?;
+    let bundled = format_submission(&bundled, edition)?;
     let output = options
         .output
         .map(|path| project.join(path))
@@ -332,11 +306,343 @@ fn confirm_public_reference(commit: &str) -> Result<()> {
     Ok(())
 }
 
-fn render_submission(syntax: &File, commit: &str) -> String {
-    let source = prettyplease::unparse(syntax);
-    format!(
-        "// https://github.com/{REFERENCE_REPOSITORY}/commit/{commit}\n\n{source}"
-    )
+fn format_submission(source: &str, edition: &str) -> Result<String> {
+    let mut process = Command::new("rustfmt")
+        .args(["--edition", edition, "--emit", "stdout"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("rustfmt を起動できません")?;
+    process
+        .stdin
+        .take()
+        .context("rustfmt の標準入力を開けません")?
+        .write_all(source.as_bytes())?;
+    let output = process
+        .wait_with_output()
+        .context("rustfmt の終了を待機できません")?;
+    if !output.status.success() {
+        bail!(
+            "生成コードの rustfmt に失敗しました:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    String::from_utf8(output.stdout).context("rustfmt の出力が UTF-8 ではありません")
+}
+
+fn render_submission(
+    source: &str,
+    syntax: &File,
+    library: &Library,
+    selected: &Selection,
+    crate_name: &str,
+    commit: &str,
+) -> Result<String> {
+    let mut edits = Vec::new();
+    collect_item_edits(source, &syntax.items, &[], None, &mut edits)?;
+    for item in &syntax.items {
+        collect_path_edits(item, crate_name, &mut edits);
+        if let Item::Use(item_use) = item {
+            if !collect_macro_import_edits(
+                &item_use.tree,
+                &mut Vec::new(),
+                crate_name,
+                &library.exported_macros,
+                &mut edits,
+            ) {
+                edits.push((item.span().byte_range(), String::new()));
+            }
+        }
+    }
+
+    let mut library_edits = library
+        .root
+        .attrs
+        .iter()
+        .map(|attr| (attr.span().byte_range(), String::new()))
+        .collect::<Vec<_>>();
+    collect_item_edits(
+        &library.root_source,
+        &library.root.items,
+        &[],
+        Some((library, selected)),
+        &mut library_edits,
+    )?;
+    let modules = apply_source_edits(&library.root_source, library_edits);
+    let insertion = module_insertion_offset(source, syntax);
+    if !modules.trim().is_empty() {
+        edits.push((insertion..insertion, format!("\n{modules}\n")));
+    }
+
+    let library_docs = library
+        .root
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("doc"))
+        .map(|attr| format!("{}\n", &library.root_source[attr.span().byte_range()]))
+        .collect::<String>();
+    let transformed = apply_source_edits(source, edits);
+    Ok(format!("// https://github.com/{REFERENCE_REPOSITORY}/commit/{commit}\n\n{library_docs}{transformed}"))
+}
+
+fn module_insertion_offset(source: &str, syntax: &File) -> usize {
+    let offset = syntax
+        .items
+        .iter()
+        .take_while(|item| matches!(item, Item::ExternCrate(_) | Item::Use(_)))
+        .last()
+        .map(|item| item.span().byte_range().end)
+        .or_else(|| syntax.attrs.last().map(|attr| attr.span().byte_range().end));
+    let Some(mut cursor) = offset else { return 0 };
+    let bytes = source.as_bytes();
+    // Keep trailing import comments with the import, without consuming the
+    // following line's comments for the first solution item.
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b' ' | b'\t' | b'\r' => cursor += 1,
+            b'\n' => return cursor + 1,
+            b'/' if bytes.get(cursor + 1) == Some(&b'/') => {
+                return source[cursor..]
+                    .find('\n')
+                    .map_or(source.len(), |end| cursor + end + 1);
+            }
+            b'/' if bytes.get(cursor + 1) == Some(&b'*') => {
+                let mut depth = 1;
+                cursor += 2;
+                while depth > 0 && cursor < bytes.len() {
+                    match bytes.get(cursor..cursor + 2) {
+                        Some(b"/*") => {
+                            depth += 1;
+                            cursor += 2;
+                        }
+                        Some(b"*/") => {
+                            depth -= 1;
+                            cursor += 2;
+                        }
+                        _ => cursor += 1,
+                    }
+                }
+            }
+            _ => break,
+        }
+    }
+    cursor
+}
+
+fn render_inline_module(
+    path: &[String],
+    declaration: &ItemMod,
+    parent_source: &str,
+    library: &Library,
+    selected: &Selection,
+) -> Result<String> {
+    let info = library
+        .modules
+        .get(path)
+        .with_context(|| format!("module {} が index にありません", path.join("::")))?;
+    let mut body_edits = Vec::new();
+    collect_item_edits(
+        &info.source,
+        &info.syntax.items,
+        path,
+        Some((library, selected)),
+        &mut body_edits,
+    )?;
+    let body = apply_source_edits(&info.source, body_edits);
+    let range = declaration.span().byte_range();
+    let mut edits = Vec::new();
+    for attribute in declaration
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("path"))
+    {
+        let attr = attribute.span().byte_range();
+        edits.push((
+            attr.start - range.start..attr.end - range.start,
+            String::new(),
+        ));
+    }
+    let semicolon = declaration
+        .semi
+        .context("外部モジュールのセミコロンがありません")?
+        .span
+        .byte_range();
+    edits.push((
+        semicolon.start - range.start..semicolon.end - range.start,
+        format!("{{\n{body}\n}}"),
+    ));
+    Ok(apply_source_edits(&parent_source[range], edits))
+}
+
+fn collect_item_edits(
+    source: &str,
+    items: &[Item],
+    current: &[String],
+    library_selection: Option<(&Library, &Selection)>,
+    edits: &mut Vec<(Range<usize>, String)>,
+) -> Result<()> {
+    let mut retained = items.to_vec();
+    if let Some((_, selected)) = library_selection {
+        if let Some(Some(names)) = selected.items.get(current) {
+            prune_unselected_items(&mut retained, names);
+        }
+    }
+    let retained_ranges = retained
+        .iter()
+        .map(|item| {
+            let range = item.span().byte_range();
+            (range.start, range.end)
+        })
+        .collect::<BTreeSet<_>>();
+    for item in items {
+        let range = item.span().byte_range();
+        let is_library_root = library_selection.is_some() && current.is_empty();
+        if !retained_ranges.contains(&(range.start, range.end))
+            || is_test_only(item_attributes(item))
+            || (is_library_root && !matches!(item, Item::Mod(_)))
+        {
+            edits.push((range, String::new()));
+            continue;
+        }
+        if let Item::Mod(module) = item {
+            if let Some((_, children)) = &module.content {
+                // Inline modules retain their items, except test-only code.
+                collect_item_edits(source, children, current, None, edits)?;
+            } else if let Some((library, selected)) = library_selection {
+                let mut path = current.to_vec();
+                path.push(module.ident.to_string());
+                if selected.modules.contains(&path) {
+                    let rendered = render_inline_module(&path, module, source, library, selected)?;
+                    edits.push((range, rendered));
+                } else {
+                    edits.push((range, String::new()));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn collect_macro_import_edits(
+    tree: &UseTree,
+    prefix: &mut ModulePath,
+    crate_name: &str,
+    macros: &BTreeMap<String, ModulePath>,
+    edits: &mut Vec<(Range<usize>, String)>,
+) -> bool {
+    match tree {
+        UseTree::Path(path) => {
+            prefix.push(path.ident.to_string());
+            let keep = collect_macro_import_edits(&path.tree, prefix, crate_name, macros, edits);
+            prefix.pop();
+            keep
+        }
+        UseTree::Name(name) => {
+            !(prefix.len() == 1
+                && prefix[0] == crate_name
+                && macros.contains_key(&name.ident.to_string()))
+        }
+        UseTree::Rename(rename) => {
+            !(prefix.len() == 1
+                && prefix[0] == crate_name
+                && macros.contains_key(&rename.ident.to_string()))
+        }
+        UseTree::Glob(_) => true,
+        UseTree::Group(group) => {
+            let pairs = group.items.pairs().collect::<Vec<_>>();
+            let mut any_retained = false;
+            for (index, pair) in pairs.iter().enumerate() {
+                let child = pair.value();
+                if collect_macro_import_edits(child, prefix, crate_name, macros, edits) {
+                    any_retained = true;
+                } else {
+                    edits.push((child.span().byte_range(), String::new()));
+                    let comma = pair
+                        .punct()
+                        .or_else(|| index.checked_sub(1).and_then(|prev| pairs[prev].punct()));
+                    if let Some(comma) = comma {
+                        edits.push((comma.span.byte_range(), String::new()));
+                    }
+                }
+            }
+            any_retained
+        }
+    }
+}
+
+fn collect_path_edits(item: &Item, crate_name: &str, edits: &mut Vec<(Range<usize>, String)>) {
+    let mut collector = CratePathCollector {
+        crate_name,
+        spans: Vec::new(),
+    };
+    collector.visit_item(item);
+    for span in collector.spans {
+        edits.push((span.byte_range(), "crate".to_owned()));
+    }
+}
+
+struct CratePathCollector<'a> {
+    crate_name: &'a str,
+    spans: Vec<proc_macro2::Span>,
+}
+
+impl<'ast> Visit<'ast> for CratePathCollector<'_> {
+    fn visit_path(&mut self, path: &'ast SynPath) {
+        if let Some(first) = path.segments.first() {
+            if first.ident == self.crate_name {
+                self.spans.push(first.ident.span());
+            }
+        }
+        visit::visit_path(self, path);
+    }
+
+    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+        collect_use_ident_spans(&item.tree, self.crate_name, &mut self.spans);
+        visit::visit_item_use(self, item);
+    }
+}
+
+fn collect_use_ident_spans(tree: &UseTree, crate_name: &str, spans: &mut Vec<proc_macro2::Span>) {
+    match tree {
+        UseTree::Path(path) => {
+            if path.ident == crate_name {
+                spans.push(path.ident.span());
+            }
+            collect_use_ident_spans(&path.tree, crate_name, spans);
+        }
+        UseTree::Group(group) => {
+            for tree in &group.items {
+                collect_use_ident_spans(tree, crate_name, spans);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_source_edits(source: &str, mut edits: Vec<(Range<usize>, String)>) -> String {
+    // Apply outer edits before contained edits, using offsets in the original source.
+    edits.sort_by(|a, b| {
+        a.0.start.cmp(&b.0.start).then_with(|| {
+            if a.0.is_empty() || b.0.is_empty() {
+                a.0.end.cmp(&b.0.end)
+            } else {
+                b.0.end.cmp(&a.0.end)
+            }
+        })
+    });
+    let mut output = String::new();
+    let mut cursor = 0;
+    for (range, replacement) in edits {
+        if range.start < cursor {
+            continue;
+        }
+        output.push_str(&source[cursor..range.start]);
+        output.push_str(&replacement);
+        cursor = range.end;
+    }
+    output.push_str(&source[cursor..]);
+    output
 }
 
 impl Library {
@@ -395,7 +701,6 @@ impl Library {
                     file: file.clone(),
                     source,
                     syntax: syntax.clone(),
-                    declaration,
                 },
             );
             self.load_children(&path, &file, &syntax.items)?;
@@ -610,144 +915,6 @@ fn collect_use_tree(tree: &UseTree, prefix: &mut ModulePath, output: &mut Vec<Mo
     }
 }
 
-struct CratePathRewriter<'a> {
-    crate_name: &'a str,
-}
-
-impl VisitMut for CratePathRewriter<'_> {
-    fn visit_path_mut(&mut self, path: &mut SynPath) {
-        if let Some(first) = path.segments.first_mut() {
-            if first.ident == self.crate_name {
-                first.ident = syn::Ident::new("crate", first.ident.span());
-            }
-        }
-        visit_mut::visit_path_mut(self, path);
-    }
-
-    fn visit_item_use_mut(&mut self, item: &mut syn::ItemUse) {
-        rewrite_use_tree(&mut item.tree, self.crate_name);
-        visit_mut::visit_item_use_mut(self, item);
-    }
-}
-
-fn rewrite_use_tree(tree: &mut UseTree, crate_name: &str) {
-    if let UseTree::Path(path) = tree {
-        if path.ident == crate_name {
-            path.ident = syn::Ident::new("crate", path.ident.span());
-        }
-        rewrite_use_tree(&mut path.tree, crate_name);
-    } else if let UseTree::Group(group) = tree {
-        for tree in &mut group.items {
-            rewrite_use_tree(tree, crate_name);
-        }
-    }
-}
-
-fn remove_root_macro_imports(
-    items: &mut Vec<Item>,
-    crate_name: &str,
-    macros: &BTreeMap<String, ModulePath>,
-) {
-    items.retain_mut(|item| {
-        let Item::Use(item_use) = item else {
-            return true;
-        };
-        let Some(tree) = filter_macro_imports(&item_use.tree, &mut Vec::new(), crate_name, macros)
-        else {
-            return false;
-        };
-        item_use.tree = tree;
-        true
-    });
-}
-
-fn filter_macro_imports(
-    tree: &UseTree,
-    prefix: &mut ModulePath,
-    crate_name: &str,
-    macros: &BTreeMap<String, ModulePath>,
-) -> Option<UseTree> {
-    match tree {
-        UseTree::Path(path) => {
-            prefix.push(path.ident.to_string());
-            let child = filter_macro_imports(&path.tree, prefix, crate_name, macros);
-            prefix.pop();
-            child.map(|child| {
-                let mut path = path.clone();
-                path.tree = Box::new(child);
-                UseTree::Path(path)
-            })
-        }
-        UseTree::Name(name) => {
-            let is_root_macro = prefix.len() == 1
-                && prefix[0] == crate_name
-                && macros.contains_key(&name.ident.to_string());
-            (!is_root_macro).then(|| UseTree::Name(name.clone()))
-        }
-        UseTree::Rename(rename) => {
-            let is_root_macro = prefix.len() == 1
-                && prefix[0] == crate_name
-                && macros.contains_key(&rename.ident.to_string());
-            (!is_root_macro).then(|| UseTree::Rename(rename.clone()))
-        }
-        UseTree::Glob(glob) => Some(UseTree::Glob(glob.clone())),
-        UseTree::Group(group) => {
-            let mut group = group.clone();
-            group.items = group
-                .items
-                .iter()
-                .filter_map(|tree| filter_macro_imports(tree, prefix, crate_name, macros))
-                .collect();
-            (!group.items.is_empty()).then_some(UseTree::Group(group))
-        }
-    }
-}
-
-fn inline_module(
-    path: &[String],
-    declaration: &ItemMod,
-    library: &Library,
-    selected: &Selection,
-) -> Result<ItemMod> {
-    let info = library
-        .modules
-        .get(path)
-        .with_context(|| format!("module {} が index にありません", path.join("::")))?;
-    let mut items = info.syntax.items.clone();
-    if let Some(Some(item_names)) = selected.items.get(path) {
-        prune_unselected_items(&mut items, item_names);
-    }
-    let mut expanded = Vec::new();
-    for item in items.drain(..) {
-        if let Item::Mod(child) = &item {
-            if child.content.is_none() {
-                let mut child_path = path.to_vec();
-                child_path.push(child.ident.to_string());
-                if selected.modules.contains(&child_path) {
-                    expanded.push(Item::Mod(inline_module(
-                        &child_path,
-                        &library.modules[&child_path].declaration,
-                        library,
-                        selected,
-                    )?));
-                }
-                continue;
-            }
-        }
-        expanded.push(item);
-    }
-    prune_tests(&mut expanded);
-    strip_docs_from_items(&mut expanded);
-
-    let mut module = declaration.clone();
-    module.attrs.retain(|attribute| {
-        !attribute.path().is_ident("path") && !attribute.path().is_ident("doc")
-    });
-    module.content = Some((syn::token::Brace::default(), expanded));
-    module.semi = None;
-    Ok(module)
-}
-
 fn prune_unselected_items(items: &mut Vec<Item>, selected: &BTreeSet<String>) {
     let named_items = items
         .iter()
@@ -857,62 +1024,6 @@ fn prune_tests(items: &mut Vec<Item>) {
     }
 }
 
-fn strip_docs_from_items(items: &mut [Item]) {
-    for item in items {
-        strip_doc_attributes(item_attributes_mut(item));
-        match item {
-            Item::Enum(item) => {
-                for variant in &mut item.variants {
-                    strip_doc_attributes(&mut variant.attrs);
-                    for field in &mut variant.fields {
-                        strip_doc_attributes(&mut field.attrs);
-                    }
-                }
-            }
-            Item::Impl(item) => {
-                for member in &mut item.items {
-                    let attrs = match member {
-                        syn::ImplItem::Const(item) => &mut item.attrs,
-                        syn::ImplItem::Fn(item) => &mut item.attrs,
-                        syn::ImplItem::Type(item) => &mut item.attrs,
-                        syn::ImplItem::Macro(item) => &mut item.attrs,
-                        _ => continue,
-                    };
-                    strip_doc_attributes(attrs);
-                }
-            }
-            Item::Mod(module) => {
-                if let Some((_, items)) = &mut module.content {
-                    strip_docs_from_items(items);
-                }
-            }
-            Item::Struct(item) => {
-                for field in &mut item.fields {
-                    strip_doc_attributes(&mut field.attrs);
-                }
-            }
-            Item::Trait(item) => {
-                for member in &mut item.items {
-                    let attrs = match member {
-                        syn::TraitItem::Const(item) => &mut item.attrs,
-                        syn::TraitItem::Fn(item) => &mut item.attrs,
-                        syn::TraitItem::Type(item) => &mut item.attrs,
-                        syn::TraitItem::Macro(item) => &mut item.attrs,
-                        _ => continue,
-                    };
-                    strip_doc_attributes(attrs);
-                }
-            }
-            Item::Union(item) => {
-                for field in &mut item.fields.named {
-                    strip_doc_attributes(&mut field.attrs);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
 fn item_attributes(item: &Item) -> &[Attribute] {
     match item {
         Item::Const(item) => &item.attrs,
@@ -932,31 +1043,6 @@ fn item_attributes(item: &Item) -> &[Attribute] {
         Item::Use(item) => &item.attrs,
         _ => &[],
     }
-}
-
-fn item_attributes_mut(item: &mut Item) -> &mut Vec<Attribute> {
-    match item {
-        Item::Const(item) => &mut item.attrs,
-        Item::Enum(item) => &mut item.attrs,
-        Item::ExternCrate(item) => &mut item.attrs,
-        Item::Fn(item) => &mut item.attrs,
-        Item::ForeignMod(item) => &mut item.attrs,
-        Item::Impl(item) => &mut item.attrs,
-        Item::Macro(item) => &mut item.attrs,
-        Item::Mod(item) => &mut item.attrs,
-        Item::Static(item) => &mut item.attrs,
-        Item::Struct(item) => &mut item.attrs,
-        Item::Trait(item) => &mut item.attrs,
-        Item::TraitAlias(item) => &mut item.attrs,
-        Item::Type(item) => &mut item.attrs,
-        Item::Union(item) => &mut item.attrs,
-        Item::Use(item) => &mut item.attrs,
-        _ => panic!("unsupported verbatim item"),
-    }
-}
-
-fn strip_doc_attributes(attributes: &mut Vec<Attribute>) {
-    attributes.retain(|attribute| !attribute.path().is_ident("doc"));
 }
 
 fn is_test_only(attributes: &[Attribute]) -> bool {
@@ -1092,8 +1178,8 @@ mod tests {
     use std::fs;
 
     use super::{
-        collect_use_tree, compile_with_cargo, filter_macro_imports, format_size, inline_module,
-        item_name, select_library, Library, ModulePath,
+        apply_source_edits, collect_macro_import_edits, collect_use_tree, compile_with_cargo,
+        format_size, item_name, render_inline_module, select_library, Library, ModulePath,
     };
 
     #[test]
@@ -1170,11 +1256,24 @@ pub trait DecimalDigitsExt { fn parse_usize(&self) -> Option<usize>; }
                 .unwrap();
         let selected = select_library(&main, &library, "sample");
         let path = vec!["string".into()];
-        let declaration = library.root.items.iter().find_map(|item| match item {
-            syn::Item::Mod(module) => Some(module),
-            _ => None,
-        });
-        let module = inline_module(&path, declaration.unwrap(), &library, &selected).unwrap();
+        let declaration = library
+            .root
+            .items
+            .iter()
+            .find_map(|item| match item {
+                syn::Item::Mod(module) => Some(module),
+                _ => None,
+            })
+            .unwrap();
+        let rendered = render_inline_module(
+            &path,
+            declaration,
+            &library.root_source,
+            &library,
+            &selected,
+        )
+        .unwrap();
+        let module = syn::parse_str::<syn::ItemMod>(&rendered).unwrap();
         let names = module
             .content
             .unwrap()
@@ -1200,46 +1299,58 @@ pub trait DecimalDigitsExt { fn parse_usize(&self) -> Option<usize>; }
             syn::Item::Mod(module) if module.ident == "string" => Some(module),
             _ => None,
         });
-        let module = inline_module(&path, declaration.unwrap(), &library, &selected).unwrap();
-        let names = module
-            .content
-            .as_ref()
-            .unwrap()
-            .1
-            .iter()
-            .filter_map(item_name)
-            .collect::<Vec<_>>();
-
-        assert_eq!(names, ["manacher"]);
-
-        let mut bundle =
-            syn::parse_file("use crate::string::manacher; fn main() { let _ = manacher(b\"\"); }")
-                .unwrap();
-        bundle.items.insert(0, syn::Item::Mod(module));
+        let module = render_inline_module(
+            &path,
+            declaration.unwrap(),
+            &library.root_source,
+            &library,
+            &selected,
+        )
+        .unwrap();
+        assert!(!module.contains("DecimalDigitsExt"));
         let source = tempfile::tempdir().unwrap();
         let output = source.path().join("bundle.rs");
-        fs::write(&output, prettyplease::unparse(&bundle)).unwrap();
+        fs::write(
+            &output,
+            format!(
+                "{module}\nuse crate::string::manacher; fn main() {{ let _ = manacher(b\"\"); }}"
+            ),
+        )
+        .unwrap();
         let manifest = toml::from_str("").unwrap();
         compile_with_cargo(&output, "2021", &manifest, source.path()).unwrap();
     }
 
     #[test]
     fn removes_only_exported_macros_from_grouped_import() {
-        let item: syn::ItemUse = syn::parse_quote!(
-            use atcoder::{input, io::Writer, geometry::Point};
-        );
         let macros = [("input".into(), vec!["io".into()])].into_iter().collect();
-        let filtered =
-            filter_macro_imports(&item.tree, &mut Vec::new(), "atcoder", &macros).unwrap();
-        let mut paths = Vec::new();
-        collect_use_tree(&filtered, &mut Vec::new(), &mut paths);
-        assert_eq!(
-            paths,
-            [
-                vec!["atcoder", "io", "Writer"],
-                vec!["atcoder", "geometry", "Point"]
-            ]
-        );
+        for source in [
+            "use atcoder::{input, /* keep comment */ io::Writer, geometry::Point};",
+            "use atcoder::{/* keep comment */ io::Writer, geometry::Point, input};",
+            "use atcoder::{input, /* keep comment */ io::Writer, input, geometry::Point, input,};",
+        ] {
+            let item = syn::parse_str::<syn::ItemUse>(source).unwrap();
+            let mut edits = Vec::new();
+            assert!(collect_macro_import_edits(
+                &item.tree,
+                &mut Vec::new(),
+                "atcoder",
+                &macros,
+                &mut edits
+            ));
+            let rendered = apply_source_edits(source, edits);
+            assert!(rendered.contains("/* keep comment */"));
+            let filtered = syn::parse_str::<syn::ItemUse>(&rendered).unwrap();
+            let mut paths = Vec::new();
+            collect_use_tree(&filtered.tree, &mut Vec::new(), &mut paths);
+            assert_eq!(
+                paths,
+                [
+                    vec!["atcoder", "io", "Writer"],
+                    vec!["atcoder", "geometry", "Point"]
+                ]
+            );
+        }
     }
 
     #[test]
