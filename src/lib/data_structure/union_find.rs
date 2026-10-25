@@ -23,7 +23,7 @@ pub struct UnionFind {
 }
 
 impl UnionFind {
-    /// `n` 個の単一要素集合を作ります。計算量は `O(N)` です。
+    /// `0..n` の各要素を含む単一要素集合を作ります。計算量・メモリ量は `O(N)` です。
     pub fn new(n: usize) -> Self {
         Self {
             parents: vec![-1; n],
@@ -31,7 +31,8 @@ impl UnionFind {
         }
     }
 
-    /// `x` の属する集合の代表元を返します。
+    /// `x` の属する集合の代表元を返します。経路圧縮を行い、償却計算量は `O(α(N))` です。
+    /// `x >= n` なら panic します。
     pub fn find(&mut self, x: usize) -> usize {
         if self.parents[x] < 0 {
             x
@@ -45,6 +46,7 @@ impl UnionFind {
     /// `x` と `y` の集合を併合します。
     ///
     /// 新しく併合した場合は `true`、既に同じ集合なら `false` を返します。
+    /// 償却計算量は `O(α(N))` です。`x >= n` または `y >= n` なら panic します。
     pub fn merge(&mut self, x: usize, y: usize) -> bool {
         let mut x = self.find(x);
         let mut y = self.find(y);
@@ -60,12 +62,14 @@ impl UnionFind {
         true
     }
 
-    /// `x` と `y` が同じ集合なら `true` を返します。
+    /// `x` と `y` が同じ集合なら `true` を返します。代表元の検索を行うため、
+    /// 償却計算量は `O(α(N))` です。`x >= n` または `y >= n` なら panic します。
     pub fn same(&mut self, x: usize, y: usize) -> bool {
         self.find(x) == self.find(y)
     }
 
-    /// `x` の属する集合の要素数を返します。
+    /// `x` の属する集合の要素数を返します。代表元の検索を行うため、
+    /// 償却計算量は `O(α(N))` です。`x >= n` なら panic します。
     pub fn size(&mut self, x: usize) -> usize {
         let root = self.find(x);
         (-self.parents[root]) as usize

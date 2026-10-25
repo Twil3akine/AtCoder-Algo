@@ -11,10 +11,10 @@ use std::str::FromStr;
 
 use super::integer::IntegerExt;
 
-/// `0..=MAX` の範囲で飽和する `usize` です。
+/// コンパイル時定数 `MAX` を上限とし、`0..=MAX` の範囲で飽和する `usize` ラッパーです。
 ///
-/// 加算・乗算は `MAX`、減算は `0` で飽和します。`usize` との四則演算、比較、変換にも
-/// 対応します。
+/// 構築・加算・乗算は `MAX`、減算は `0` で飽和します。除算と剰余は通常の `usize` 演算で、
+/// 飽和しません。`usize` との演算・比較や相互変換もできます。`MAX == 0` も有効です。
 ///
 /// # Examples
 ///
@@ -37,32 +37,35 @@ pub struct SaturatingUsize<const MAX: usize> {
 }
 
 impl<const MAX: usize> SaturatingUsize<MAX> {
-    /// `0` です。
+    /// 値 `0` を表します。
     pub const ZERO: Self = Self { value: 0 };
 
-    /// この型が保持できる最大値です。
+    /// この型が保持できる上限 `MAX` を表します。
     pub const MAX: Self = Self { value: MAX };
 
-    /// `value` を `MAX` 以下に飽和させて作ります。
+    /// `value` を `MAX` 以下に丸めて作ります（`value > MAX` なら `MAX`）。
     pub const fn new(value: usize) -> Self {
         Self {
             value: if value > MAX { MAX } else { value },
         }
     }
 
-    /// 飽和済みの値を返します。
+    /// 現在の値（常に `0..=MAX`）を返します。
     pub const fn value(self) -> usize {
         self.value
     }
 
-    /// 飽和済みの値を返します。
+    /// 現在の値（常に `0..=MAX`）を参照経由で返します。
     ///
     /// [`value`](Self::value) と同じです。
     pub const fn val(&self) -> usize {
         self.value
     }
 
-    /// `self` の `exponent` 乗を `MAX` で飽和させて返します。
+    /// `self` の `exponent` 乗を計算し、各乗算結果を `MAX` で飽和させて返します。
+    ///
+    /// 指数は `u32` です。計算量は `O(log exponent)` です。指数 `0` では `1` を返しますが、
+    /// `MAX == 0` の場合は構築時に `0` へ丸められます。
     pub fn pow(self, mut exponent: u32) -> Self {
         let mut result = Self::new(1);
         let mut base = self;

@@ -6,7 +6,8 @@ use std::ops::Index;
 /// モノイド `(T, op, identity)` 上のセグメント木です。
 ///
 /// 添字は 0-indexed、区間は半開区間 `[left, right)` です。`op` は結合則を満たし、
-/// `identity` はその単位元である必要があります。構築は `O(N)`、点更新・区間取得・
+/// `identity` はその単位元である必要があります。`op` が非可換でも、区間内の左から右の
+/// 順序で集約します。構築は `O(N)`、点更新・区間取得・
 /// 二分探索は `O(log N)` です。
 ///
 /// # Examples
@@ -29,7 +30,9 @@ pub struct SegmentTree<T, F> {
 }
 
 impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
-    /// 長さ `len`、全要素が `identity` の木を作ります。計算量は `O(N)` です。
+    /// 長さ `len`、各要素が `identity` の木を作ります。計算量・メモリ量は `O(N)` です。
+    ///
+    /// `op` は結合則を満たし、`identity` は左右両方の単位元である必要があります。
     pub fn new(op: F, len: usize, identity: T) -> Self {
         let size = len.next_power_of_two().max(1);
         Self {
@@ -41,7 +44,9 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         }
     }
 
-    /// 配列から木を構築します。計算量は `O(N)` です。
+    /// `values` の配列から木を構築します。計算量・メモリ量は `O(N)` です。
+    ///
+    /// `op` は結合則を満たし、`identity` は左右両方の単位元である必要があります。
     pub fn from_vec(values: impl Into<Vec<T>>, op: F, identity: T) -> Self {
         let values = values.into();
         let len = values.len();
@@ -60,7 +65,7 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         }
     }
 
-    /// 配列から木を構築します。計算量は `O(N)` です。
+    /// [`from_vec`](Self::from_vec) と同じです。`values` の配列から木を構築します。
     pub fn from(op: F, values: Vec<T>, identity: T) -> Self {
         Self::from_vec(values, op, identity)
     }
@@ -75,7 +80,7 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         self.len == 0
     }
 
-    /// `index` 番目を `value` に更新します。
+    /// 0 始まりの `index` 番目を `value` に更新します。計算量は `O(log N)` です。
     ///
     /// `index >= len` の場合は panic します。
     pub fn set(&mut self, index: usize, value: T) {
@@ -88,7 +93,8 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         }
     }
 
-    /// `index` 番目の値を返します。範囲外なら panic します。
+    /// 0 始まりの `index` 番目の値を返します。`index >= len` なら panic します。
+    /// 計算量は `O(1)` です。
     pub fn at(&self, index: usize) -> T {
         assert!(index < self.len, "index out of bounds");
         self.data[self.size + index]
@@ -96,7 +102,8 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
 
     /// 半開区間 `[left, right)` の集約値を返します。
     ///
-    /// `left > right` または `right > len` の場合は panic します。空区間には単位元を返します。
+    /// 添字は 0 始まりです。`left > right` または `right > len` の場合は panic します。
+    /// 空区間には単位元を返します。計算量は `O(log N)` です。
     pub fn get(&self, left: usize, right: usize) -> T {
         assert!(left <= right && right <= self.len, "range out of bounds");
         let mut left = left + self.size;
@@ -120,7 +127,9 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
 
     /// `predicate(get(left, right))` が真である最大の `right` を返します。
     ///
-    /// `predicate(identity)` は真で、集約区間を伸ばしたとき単調である必要があります。
+    /// `predicate(identity)` は真で、右端を伸ばしたとき述語が真から偽へ高々一度だけ
+    /// 変化する必要があります。集約は `op` の左から右の順で行います。
+    /// 返り値は `left..right` が条件を満たす最大の `right` です。`left > len` なら panic します。
     pub fn max_right<P>(&self, mut left: usize, predicate: P) -> usize
     where
         P: Fn(T) -> bool,
@@ -159,7 +168,9 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
 
     /// `predicate(get(left, right))` が真である最小の `left` を返します。
     ///
-    /// `predicate(identity)` は真で、集約区間を左へ伸ばしたとき単調である必要があります。
+    /// `predicate(identity)` は真で、左端を左へ動かしたとき述語が真から偽へ高々一度だけ
+    /// 変化する必要があります。集約は `op` の左から右の順で行います。
+    /// 返り値は `left..right` が条件を満たす最小の `left` です。`right > len` なら panic します。
     pub fn min_left<P>(&self, mut right: usize, predicate: P) -> usize
     where
         P: Fn(T) -> bool,
@@ -199,6 +210,7 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
 
 impl<T: Debug, F> SegmentTree<T, F> {
     /// 葉のうち、元配列に対応する要素だけをデバッグ出力します。
+    /// 出力先や書式は [`crate::debug!`] マクロの設定に従います。
     pub fn debug_values(&self) {
         crate::debug!("{:?}", &self.data[self.size..self.size + self.len]);
     }

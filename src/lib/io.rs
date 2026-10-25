@@ -7,10 +7,12 @@ use std::cell::RefCell;
 use std::fmt::Display;
 use std::io::{self, BufRead, BufWriter, Write};
 
-/// `BufRead` から空白区切りのトークンを読み取ります。
+/// `BufRead` から空白区切りのトークンを読み取る scanner です。
 ///
-/// トークンの読み取りは償却 `O(L)` です。`L` はトークンのバイト長です。
-/// 入力が尽きた場合、または `T` への変換に失敗した場合は panic します。
+/// 一度に1行ずつ読み込み、ASCII 空白文字で区切られたトークンを読みます。
+/// 読み取り位置は scanner が保持するため、同じ scanner への呼び出し間で続きから読み取れます。
+/// トークン読み取りの時間計算量はトークン長を `L` バイトとして償却 `O(L)` です。
+/// 入力が尽きた場合、読み取りに失敗した場合、またはトークンを `T` に変換できない場合は panic します。
 #[doc(hidden)]
 pub struct Scanner<R: BufRead> {
     reader: R,
@@ -20,6 +22,18 @@ pub struct Scanner<R: BufRead> {
 
 impl<R: BufRead> Scanner<R> {
     /// 入力元 `reader` を指定して scanner を作ります。
+    ///
+    /// 読み取り元の現在位置から読み始めます。以後の入力取得は遅延して行います。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use atcoder::io::Scanner;
+    ///
+    /// let mut scanner = Scanner::new(&b"12 hello"[..]);
+    /// assert_eq!(scanner.token::<usize>(), 12);
+    /// assert_eq!(scanner.token::<String>(), "hello");
+    /// ```
     pub fn new(reader: R) -> Self {
         Self {
             reader,
@@ -35,7 +49,10 @@ impl<R: BufRead> Scanner<R> {
         Self::new(reader)
     }
 
-    /// 次のトークンを `T` として返します。
+    /// 次の空白区切りトークンを `T` として返します。
+    ///
+    /// `T` は [`std::str::FromStr`] を実装する必要があります。トークンがなければ追加の入力を読み、
+    /// 入力終端に達したとき、または変換に失敗したときは panic します。
     pub fn token<T: std::str::FromStr>(&mut self) -> T {
         loop {
             let bytes = self.buffer.as_bytes();
@@ -76,6 +93,11 @@ thread_local! {
 /// `input!` の内部で入力形式を展開します。
 ///
 /// 通常の型に加え、タプル、固定長入力、`chars`、`usize1`、`isize1` を扱います。
+///
+/// 各 `name: type` の形式で変数を宣言しながら値を読みます。`mut` を付けた名前は可変変数になります。
+/// `chars` はトークンを Unicode scalar value の `Vec<char>` にし、`[T; n]` は `n` 個を `Vec<T>`
+/// として読みます。`usize1` と `isize1` は入力整数から 1 を引くため、入力値は 1 以上である必要があります。
+/// タプル型 `(T1, T2, ...)` は各要素を順に読み取ります。
 #[doc(hidden)]
 #[macro_export]
 macro_rules! read_value {
@@ -139,7 +161,8 @@ macro_rules! input {
 
 /// グローバルなバッファへ改行なしで出力します。
 ///
-/// 出力後は [`wflush`] を呼び出してください。
+/// 出力後は [`wflush`] を呼び出してください。呼び出しごとに標準出力へ直接書き込まず、
+/// スレッドローカルなバッファへ蓄積します。
 #[macro_export]
 macro_rules! wprint {
     ($($argument:tt)*) => {
@@ -154,6 +177,9 @@ macro_rules! wprint {
 }
 
 /// グローバルなバッファへ改行付きで出力します。
+///
+/// フォーマット構文は [`format_args!`] と同じです。実際の書き出しはバッファが満杯になるか、
+/// [`wflush`] が呼ばれたときに行われます。
 #[macro_export]
 macro_rules! wprintln {
     () => {
@@ -164,7 +190,10 @@ macro_rules! wprintln {
     };
 }
 
-/// [`wprint!`] と [`wprintln!`] の出力バッファを flush します。
+/// [`wprint!`] と [`wprintln!`] のスレッドローカルな標準出力バッファを flush します。
+///
+/// 競技プログラムの終了前や、対話型問題で出力を相手へ届ける必要があるときに呼び出します。
+/// 書き込みに失敗した場合は panic します。
 pub fn wflush() {
     WRITER.with(|writer| writer.borrow_mut().flush().unwrap());
 }
@@ -179,40 +208,48 @@ pub struct Writer<W: Write> {
 
 impl<W: Write> Writer<W> {
     /// `writer` を出力先として作ります。
+    ///
+    /// 書き込みは内部バッファに蓄積されます。明示的に [`flush`](Self::flush) するか、値が破棄されると
+    /// バッファが出力先へ書き出されます。
     pub fn with_writer(writer: W) -> Self {
         Self {
             writer: BufWriter::new(writer),
         }
     }
 
-    /// 値を改行なしで出力します。
+    /// `Display` 可能な `value` を改行なしで出力バッファへ追加します。
+    ///
+    /// 書き込みに失敗した場合は panic します。
     pub fn print(&mut self, value: impl Display) {
         write!(self.writer, "{value}").unwrap();
     }
 
-    /// 値を改行付きで出力します。
+    /// `Display` 可能な `value` と改行を出力バッファへ追加します。
+    ///
+    /// 書き込みに失敗した場合は panic します。
     pub fn println(&mut self, value: impl Display) {
         writeln!(self.writer, "{value}").unwrap();
     }
 
-    /// `condition` に応じて `Yes` または `No` を出力します。
+    /// `condition` が `true` なら `Yes`、`false` なら `No` を改行付きで出力します。
     pub fn print_yes_no(&mut self, condition: bool) {
         self.println(if condition { "Yes" } else { "No" });
     }
 
-    /// `Yes` を出力します。
+    /// `Yes` を改行付きで出力します。
     pub fn print_yes(&mut self) {
         self.print_yes_no(true);
     }
 
-    /// `No` を出力します。
+    /// `No` を改行付きで出力します。
     pub fn print_no(&mut self) {
         self.print_yes_no(false);
     }
 
-    /// 要素を `separator` で連結し、末尾に改行を出力します。
+    /// `values` の各要素を `separator` で連結し、末尾に改行を出力します。
     ///
-    /// イテレータの要素数を `N`、出力文字数を `S` とすると `O(N + S)` です。
+    /// 空イテレータの場合も改行を1つ出力します。イテレータの要素数を `N`、値と区切り文字の
+    /// 合計出力バイト数を `S` とすると、時間計算量は `O(N + S)` です。
     pub fn join<T: Display>(&mut self, values: impl IntoIterator<Item = T>, separator: &str) {
         let mut values = values.into_iter();
         if let Some(first) = values.next() {
@@ -225,22 +262,24 @@ impl<W: Write> Writer<W> {
         self.println("");
     }
 
-    /// 要素を区切りなしで1行に出力します。
+    /// `values` の要素を区切りなしで連結し、末尾に改行を付けて出力します。
     pub fn join_nospace<T: Display>(&mut self, values: impl IntoIterator<Item = T>) {
         self.join(values, "");
     }
 
-    /// 要素を空白区切りで1行に出力します。
+    /// `values` の要素を ASCII 空白1文字で区切り、末尾に改行を付けて出力します。
     pub fn join_whitespace<T: Display>(&mut self, values: impl IntoIterator<Item = T>) {
         self.join(values, " ");
     }
 
-    /// 各要素を1行ずつ出力します。
+    /// `values` の要素を改行で区切って出力し、最後にも改行を付けます。
     pub fn join_line<T: Display>(&mut self, values: impl IntoIterator<Item = T>) {
         self.join(values, "\n");
     }
 
     /// バッファの内容を出力先へ書き出します。
+    ///
+    /// 書き込みに失敗した場合は panic します。
     pub fn flush(&mut self) {
         self.writer.flush().unwrap();
     }
@@ -248,6 +287,8 @@ impl<W: Write> Writer<W> {
 
 impl Writer<io::StdoutLock<'static>> {
     /// 標準出力を出力先として作ります。
+    ///
+    /// 標準出力をロックしてラップします。出力を明示的に確定したい場合は [`flush`](Self::flush) を呼びます。
     pub fn new() -> Self {
         Self::with_writer(io::stdout().lock())
     }

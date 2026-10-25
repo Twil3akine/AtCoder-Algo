@@ -4,7 +4,7 @@
 ///
 /// 添字は 0-indexed、区間は `[left, right)` です。`compose(old, new)` は古い作用の後に
 /// 新しい作用を適用した合成を返し、結合則と単位元 `identity` を満たす必要があります。
-/// 更新と取得はいずれも `O(log N)` です。
+/// 作用が非可換でも、この順序を守れば扱えます。更新と取得はいずれも `O(log N)` です。
 ///
 /// # Examples
 ///
@@ -27,12 +27,18 @@ pub struct DualSegmentTree<T, F> {
 }
 
 impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
-    /// 長さ `len`、全要素が `identity` の木を作ります。計算量は `O(N)` です。
+    /// 長さ `len`、各点の初期値が `identity` の木を作ります。計算量・メモリ量は `O(N)` です。
+    ///
+    /// `compose(old, new)` は、点に蓄積済みの作用 `old` の後に新しい作用 `new` を
+    /// 適用した合成を返す関数です。`identity` はこの関数の単位元である必要があります。
     pub fn new(compose: F, len: usize, identity: T) -> Self {
         Self::from_vec(vec![identity; len], compose, identity)
     }
 
-    /// 各点の初期値を指定して木を構築します。計算量は `O(N)` です。
+    /// 各点の初期値を指定して木を構築します。計算量・メモリ量は `O(N)` です。
+    ///
+    /// `values[i]` が添字 `i` の初期値になります。`compose` と `identity` の条件は
+    /// [`new`](Self::new) と同じです。
     pub fn from_vec(values: impl Into<Vec<T>>, compose: F, identity: T) -> Self {
         let values = values.into();
         let len = values.len();
@@ -50,7 +56,7 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
         }
     }
 
-    /// 各点の初期値を指定して木を構築します。計算量は `O(N)` です。
+    /// [`from_vec`](Self::from_vec) と同じです。各点の初期値を `values` で指定します。
     pub fn from(compose: F, values: Vec<T>, identity: T) -> Self {
         Self::from_vec(values, compose, identity)
     }
@@ -73,9 +79,11 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
         }
     }
 
-    /// 半開区間 `[left, right)` に `value` を適用します。
+    /// 半開区間 `[left, right)` の各点に `value` を適用します。
     ///
-    /// 範囲が `0..=len` を外れる、または `left > right` の場合は panic します。
+    /// 添字は 0 始まりです。範囲が `0..=len` を外れる、または `left > right` の場合は
+    /// panic します。空区間なら何もしません。各点では既存の作用の後に `value` を適用します。
+    /// 計算量は `O(log N)` です。
     pub fn apply(&mut self, left: usize, right: usize, value: T) {
         assert!(left <= right && right <= self.len, "range out of bounds");
         if left == right {
@@ -99,7 +107,8 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
         }
     }
 
-    /// `index` 番目の値を返します。範囲外なら panic します。
+    /// `index` 番目の値を返します。添字は 0 始まりで、`index >= len` なら panic します。
+    /// 蓄積された作用を古いものから新しいものの順に合成します。計算量は `O(log N)` です。
     pub fn get(&self, index: usize) -> T {
         assert!(index < self.len, "index out of bounds");
         let mut index = index + self.size;
@@ -113,9 +122,9 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
         })
     }
 
-    /// `index` 番目の値を返します。
+    /// `index` 番目の値を返します。添字は 0 始まりです。
     ///
-    /// [`get`](Self::get) と同じです。
+    /// [`get`](Self::get) と同じで、`index >= len` なら panic します。計算量は `O(log N)` です。
     pub fn at(&self, index: usize) -> T {
         self.get(index)
     }
@@ -124,8 +133,9 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree<T, F> {
 /// 矩形更新・一点取得を行う2次元双対セグメント木です。
 ///
 /// 行区間 `[upper, lower)` と列区間 `[left, right)` はともに 0-indexed の半開区間です。
-/// `compose` は可換である必要があります。更新・取得は `O(log H log W)`、メモリは
-/// `O(HW)` です。
+/// `compose` は結合的な演算で、`identity` はその単位元である必要があります。また、
+/// 2 次元の更新ノードを走査する順序に依存しないよう、演算は可換である必要があります。
+/// 更新・取得は `O(log H log W)`、メモリは `O(HW)` です。
 #[derive(Clone)]
 pub struct DualSegmentTree2D<T, F> {
     compose: F,
@@ -138,7 +148,9 @@ pub struct DualSegmentTree2D<T, F> {
 }
 
 impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree2D<T, F> {
-    /// `height × width` の木を作ります。
+    /// `height × width` の木を作り、すべての点の初期値を `identity` にします。
+    /// 添字は行・列とも 0 始まりです。`compose` は結合的かつ可換で、`identity` を
+    /// 単位元とする必要があります。メモリ量は `O(HW)` です。
     pub fn new(height: usize, width: usize, compose: F, identity: T) -> Self {
         let row_size = height.next_power_of_two().max(1);
         let column_size = width.next_power_of_two().max(1);
@@ -176,7 +188,11 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree2D<T, F> {
         nodes
     }
 
-    /// 矩形 `[upper, lower) × [left, right)` に `value` を適用します。
+    /// 矩形 `[upper, lower) × [left, right)` の各点に `value` を適用します。
+    ///
+    /// 行・列区間は 0 始まりの半開区間です。各区間が対応する次元の範囲内でない場合や、
+    /// 左端が右端を超える場合は panic します。空の行区間または列区間なら何もしません。
+    /// 計算量は `O(log H log W)` です。
     pub fn apply(&mut self, upper: usize, lower: usize, left: usize, right: usize, value: T) {
         assert!(
             upper <= lower && lower <= self.height,
@@ -194,7 +210,8 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree2D<T, F> {
         }
     }
 
-    /// 点 `(row, column)` の値を返します。範囲外なら panic します。
+    /// 点 `(row, column)` の値を返します。行・列は 0 始まりで、範囲外なら panic します。
+    /// 計算量は `O(log H log W)` です。
     pub fn get(&self, row: usize, column: usize) -> T {
         assert!(
             row < self.height && column < self.width,
@@ -221,9 +238,9 @@ impl<T: Copy, F: Fn(T, T) -> T> DualSegmentTree2D<T, F> {
         result
     }
 
-    /// 点 `(row, column)` の値を返します。
+    /// 点 `(row, column)` の値を返します。行・列は 0 始まりです。
     ///
-    /// [`get`](Self::get) と同じです。
+    /// [`get`](Self::get) と同じで、範囲外なら panic します。計算量は `O(log H log W)` です。
     pub fn at(&self, row: usize, column: usize) -> T {
         self.get(row, column)
     }

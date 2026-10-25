@@ -1,4 +1,4 @@
-//! 整数演算と剰余演算を提供します。
+//! 整数演算、剰余演算、組合せ計算、素数処理、基数変換の共通ライブラリです。
 
 pub mod combinatorics;
 pub mod fast_math;

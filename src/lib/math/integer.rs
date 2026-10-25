@@ -1,8 +1,10 @@
-//! 組み込み整数型向けの拡張です。
+//! 整数値の min/max と、組み込み整数型向けの小さな拡張を提供します。
 
 use std::ops::{Div, Rem};
 
-/// 2つの値のうち小さい方を返します。
+/// `lhs` と `rhs` のうち小さい方を返します。
+///
+/// 同じ値の場合は `lhs` を返します。比較可能な任意の型で使えます。
 pub fn min<T: Ord>(lhs: T, rhs: T) -> T {
     if lhs <= rhs {
         lhs
@@ -11,7 +13,9 @@ pub fn min<T: Ord>(lhs: T, rhs: T) -> T {
     }
 }
 
-/// 2つの値のうち大きい方を返します。
+/// `lhs` と `rhs` のうち大きい方を返します。
+///
+/// 同じ値の場合は `lhs` を返します。比較可能な任意の型で使えます。
 pub fn max<T: Ord>(lhs: T, rhs: T) -> T {
     if lhs >= rhs {
         lhs
@@ -20,10 +24,11 @@ pub fn max<T: Ord>(lhs: T, rhs: T) -> T {
     }
 }
 
-/// スライスの最小値と最大値を返します。
+/// スライス内の最小値と最大値への参照を `(最小, 最大)` の順で返します。
 ///
-/// 空のスライスには `None` を返します。要素数を `n` とすると、比較回数は最大で
-/// `3n / 2` 回です。
+/// 空スライスには `None`、要素がある場合は `Some((最小要素, 最大要素))` を返します。
+/// 同値の要素が複数ある場合、どの同値要素への参照が選ばれるかは保証しません。
+/// 要素数を `n` とすると比較回数は最大 `3 * floor(n / 2)` 回で、計算量は `O(n)` です。
 pub fn minmax<T: Ord>(values: &[T]) -> Option<(&T, &T)> {
     if values.is_empty() {
         return None;
@@ -60,7 +65,9 @@ pub fn minmax<T: Ord>(values: &[T]) -> Option<(&T, &T)> {
 
 /// 組み込み整数型に便利な整数演算を追加する拡張トレイトです。
 ///
-/// すべての符号付き・符号なし整数型に実装されています。
+/// すべての符号付き・符号なし組み込み整数型に実装されています。
+/// `div_rem` は通常の整数除算に従い、除数 `0` や符号付き最小値を `-1` で割る場合は
+/// panic します。`chmin` と `chmax` は値を条件付きで更新し、その成否を `bool` で返します。
 ///
 /// # Examples
 ///
@@ -75,7 +82,10 @@ pub fn minmax<T: Ord>(values: &[T]) -> Option<(&T, &T)> {
 /// assert_eq!(10_usize.div_rem(3), (3, 1));
 /// ```
 pub trait IntegerExt: Sized + Copy + Ord {
-    /// 切り捨て除算の商と余りを `(self / rhs, self % rhs)` として返します。
+    /// 商と余りを `(self / rhs, self % rhs)` の順に返します。
+    ///
+    /// 符号付き整数の商は `0` 方向へ切り捨て、余りは `self` と同じ符号になります。
+    /// 除数 `rhs` が `0` の場合など、通常の除算が panic する入力ではこのメソッドも panic します。
     fn div_rem(self, rhs: Self) -> (Self, Self)
     where
         Self: Div<Output = Self> + Rem<Output = Self>,
@@ -83,7 +93,9 @@ pub trait IntegerExt: Sized + Copy + Ord {
         (self / rhs, self % rhs)
     }
 
-    /// `rhs` が `self` より小さければ `self` を更新し、更新したかを返します。
+    /// `rhs` が `self` より小さい場合に `self` を `rhs` で置き換えます。
+    ///
+    /// 値を置き換えた場合は `true`、そのままの場合は `false` を返します。
     fn chmin(&mut self, rhs: Self) -> bool {
         if rhs < *self {
             *self = rhs;
@@ -93,7 +105,9 @@ pub trait IntegerExt: Sized + Copy + Ord {
         }
     }
 
-    /// `rhs` が `self` より大きければ `self` を更新し、更新したかを返します。
+    /// `rhs` が `self` より大きい場合に `self` を `rhs` で置き換えます。
+    ///
+    /// 値を置き換えた場合は `true`、そのままの場合は `false` を返します。
     fn chmax(&mut self, rhs: Self) -> bool {
         if rhs > *self {
             *self = rhs;

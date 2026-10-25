@@ -4,8 +4,10 @@ use super::mod_int::ModInt;
 
 /// 階乗と逆階乗を前計算し、順列・組合せを高速に計算します。
 ///
-/// `0..=max_n` の階乗と逆階乗を前計算します。構築後は `n!`, `nPr`, `nCr` を
-/// それぞれ `O(1)` で計算できます。
+/// 法 `MOD` 上の階乗・順列・組合せを前計算して扱います。
+///
+/// `new(max_n)` は `0..=max_n` の階乗と逆階乗を保存します。以後、引数 `n` がこの範囲内なら
+/// `n!`、順列 `nPr`、組合せ `nCr` を `O(1)` で求められます。`r > n` の順列・組合せは `0` です。
 ///
 /// `MOD` は素数であり、`max_n < MOD` を満たす必要があります。
 /// 構築の計算量は `O(max_n + log MOD)`、使用メモリは `O(max_n)` です。
@@ -34,9 +36,15 @@ pub struct Combinatorics<const MOD: i64> {
 }
 
 impl<const MOD: i64> Combinatorics<MOD> {
-    /// `0..=max_n` の階乗と逆階乗を前計算します。
+    /// `0..=max_n` の階乗と逆階乗を法 `MOD` で前計算します。
+    ///
+    /// `MOD` は `1` より大きい素数、かつ `max_n < MOD` でなければなりません。
     ///
     /// 計算量は `O(max_n + log MOD)`、使用メモリは `O(max_n)` です。
+    ///
+    /// # Panics
+    ///
+    /// `MOD <= 1`、`max_n >= MOD`、または `max_n` が `i64` に収まらない場合に panic します。
     pub fn new(max_n: usize) -> Self {
         assert!(MOD > 1, "modulus must be greater than one");
 
@@ -66,22 +74,27 @@ impl<const MOD: i64> Combinatorics<MOD> {
         }
     }
 
-    /// 前計算した最大の `n` を返します。
+    /// 前計算した最大の引数 `n` を返します。利用可能な範囲は `0..=max_n()` です。
     pub fn max_n(&self) -> usize {
         self.factorial.len() - 1
     }
 
-    /// `n!` を返します。
+    /// `n!` を法 `MOD` で返します。
     ///
     /// 計算量は `O(1)` です。
+    ///
+    /// # Panics
+    ///
+    /// `n > max_n()` の場合に panic します。
     pub fn factorial(&self, n: usize) -> ModInt<MOD> {
         self.assert_in_range(n);
         self.factorial[n]
     }
 
-    /// 順列 `nPr` を返します。
+    /// 順列 `nPr = n! / (n-r)!` を法 `MOD` で返します。
     ///
-    /// `r > n` の場合は `0` を返します。計算量は `O(1)` です。
+    /// `r > n` の場合は `0` を返します。`n` は前計算範囲内である必要があります。
+    /// 計算量は `O(1)` です。
     pub fn permutation(&self, n: usize, r: usize) -> ModInt<MOD> {
         self.assert_in_range(n);
 
@@ -92,9 +105,10 @@ impl<const MOD: i64> Combinatorics<MOD> {
         self.factorial[n] * self.inverse_factorial[n - r]
     }
 
-    /// 組合せ `nCr` を返します。
+    /// 組合せ `nCr` を法 `MOD` で返します。
     ///
-    /// `r > n` の場合は `0` を返します。計算量は `O(1)` です。
+    /// `r > n` の場合は `0` を返します。`n` は前計算範囲内である必要があります。
+    /// 計算量は `O(1)` です。
     pub fn combination(&self, n: usize, r: usize) -> ModInt<MOD> {
         self.assert_in_range(n);
 
