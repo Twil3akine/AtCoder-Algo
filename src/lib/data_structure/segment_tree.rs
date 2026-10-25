@@ -93,6 +93,25 @@ impl<T: Copy, F: Fn(T, T) -> T> SegmentTree<T, F> {
         }
     }
 
+    /// 0 始まりの `index` 番目の現在値を `f` に渡し、戻り値で更新します。
+    ///
+    /// `f` は1回だけ呼び出し、更新後は祖先の集約値も再計算します。
+    /// 計算量は `f` の実行時間を除いて `O(log N)` です。`index >= len` なら
+    /// `f` を呼び出す前に panic します。
+    ///
+    /// ```
+    /// use atcoder::data_structure::segment_tree::SegmentTree;
+    ///
+    /// let mut seg = SegmentTree::from_vec([1, 2, 3], |a, b| a + b, 0);
+    /// seg.update(1, |v| v + 5);
+    /// seg.update(2, |v| v.max(10));
+    /// assert_eq!(seg.at(1), 7);
+    /// assert_eq!(seg.get(0, 3), 18);
+    /// ```
+    pub fn update(&mut self, index: usize, f: impl FnOnce(T) -> T) {
+        self.set(index, f(self.at(index)));
+    }
+
     /// 0 始まりの `index` 番目の値を返します。`index >= len` なら panic します。
     /// 計算量は `O(1)` です。
     pub fn at(&self, index: usize) -> T {
@@ -235,6 +254,34 @@ mod tests {
         assert_eq!(tree.get(1, 3), 5);
         assert_eq!(tree.max_right(0, |sum| sum <= 5), 2);
         assert_eq!(tree.min_left(4, |sum| sum <= 7), 2);
+    }
+
+    #[test]
+    fn updates_values_and_ancestor_aggregates() {
+        let mut tree = SegmentTree::from_vec([1, 2, 3], |a, b| a + b, 0);
+        let mut calls = 0;
+        tree.update(0, |value| {
+            calls += 1;
+            value + 4
+        });
+        assert_eq!(calls, 1);
+        assert_eq!(tree.get(0, 2), 7);
+
+        // キャプチャを消費する FnOnce クロージャも受け取れる。
+        let candidates = vec![10];
+        tree.update(2, move |value| {
+            value.max(candidates.into_iter().next().unwrap())
+        });
+        assert_eq!(tree.at(2), 10);
+        assert_eq!(tree.get(1, 3), 12);
+        assert_eq!(tree.get(0, 3), 17);
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn update_rejects_out_of_bounds_before_calling_closure() {
+        let mut tree = SegmentTree::from_vec([1], |a, b| a + b, 0);
+        tree.update(1, |_| panic!("closure must not be called"));
     }
 
     #[test]
