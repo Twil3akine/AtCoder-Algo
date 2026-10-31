@@ -338,3 +338,125 @@ mod tests {
         assert_eq!(vec![9; usize::BITS as usize].parse_usize(), None);
     }
 }
+/// Z-algorithm で、各位置から始まる部分文字列と文字列全体との
+/// 最長共通接頭辞の長さを返します。
+///
+/// 結果の `z[i]` は `s[i..]` と `s` の最長共通接頭辞の長さで、`z[0]` は
+/// `s.len()` です。計算量は `O(N)` です。`s` の中でパターン `t` が現れる
+/// 位置を探すには、`t + sentinel + s` の形に連結して使います。
+pub fn z_algorithm<T: Eq>(s: &[T]) -> Vec<usize> {
+    let n = s.len();
+    let mut z = vec![0usize; n];
+    if n == 0 {
+        return z;
+    }
+    z[0] = n;
+    let (mut l, mut r) = (0usize, 0usize);
+    for i in 1..n {
+        if i < r {
+            z[i] = z[i - l].min(r - i);
+        }
+        while i + z[i] < n && s[z[i]] == s[i + z[i]] {
+            z[i] += 1;
+        }
+        if i + z[i] > r {
+            l = i;
+            r = i + z[i];
+        }
+    }
+    z
+}
+
+/// ローリングハッシュです。部分文字列のハッシュを `O(1)` で取得できます。
+///
+/// 法は 2^61 - 1 で、基数は決定的な固定値にしているため、同じ入力からは
+/// 常に同じハッシュが得られます。バイト列を対象にします。
+pub struct RollingHash {
+    base: u64,
+    power: Vec<u64>,
+    prefix: Vec<u64>,
+}
+
+const MOD61: u64 = (1u64 << 61) - 1;
+
+fn mul61(a: u64, b: u64) -> u64 {
+    let au = a >> 31;
+    let ad = a & ((1u64 << 31) - 1);
+    let bu = b >> 31;
+    let bd = b & ((1u64 << 31) - 1);
+    let mid = au * bd + ad * bu;
+    let mut x = au * bu * 2 + (mid >> 30) + ((mid & ((1u64 << 30) - 1)) << 31) + ad * bd;
+    x = (x >> 61) + (x & MOD61);
+    if x >= MOD61 {
+        x - MOD61
+    } else {
+        x
+    }
+}
+
+fn mod61(x: u64) -> u64 {
+    let x = (x >> 61) + (x & MOD61);
+    if x >= MOD61 {
+        x - MOD61
+    } else {
+        x
+    }
+}
+
+impl RollingHash {
+    /// バイト列 `s` のローリングハッシュを構築します。計算量は `O(N)` です。
+    pub fn new(s: &[u8]) -> Self {
+        // 基数は決定的な値にして、同じ入力には同じハッシュを使う。
+        let base = 9113823u64 % MOD61;
+        let mut power = vec![1u64; s.len() + 1];
+        for i in 0..s.len() {
+            power[i + 1] = mul61(power[i], base);
+        }
+        let mut prefix = vec![0u64; s.len() + 1];
+        for (i, &c) in s.iter().enumerate() {
+            prefix[i + 1] = mod61(mul61(prefix[i], base) + c as u64 + 1);
+        }
+        Self {
+            base,
+            power,
+            prefix,
+        }
+    }
+
+    /// 半開区間 `[left, right)` のハッシュを返します。計算量は `O(1)` です。
+    pub fn get(&self, left: usize, right: usize) -> u64 {
+        let value =
+            self.prefix[right] as i128 - mul61(self.prefix[left], self.power[right - left]) as i128;
+        let m = MOD61 as i128;
+        ((value % m) + m) as u64 % MOD61
+    }
+
+    /// 基数を返します（デバッグ用）。
+    pub fn base(&self) -> u64 {
+        self.base
+    }
+}
+
+#[cfg(test)]
+mod z_algorithm_and_rolling_hash_tests {
+    use super::{z_algorithm, RollingHash};
+
+    #[test]
+    fn z_finds_longest_prefix_matches() {
+        let z = z_algorithm(b"aaaaa");
+        assert_eq!(z, vec![5, 4, 3, 2, 1]);
+        let z = z_algorithm(b"abcababc");
+        assert_eq!(z[5], 3);
+        assert_eq!(z[3], 2);
+    }
+
+    #[test]
+    fn rolling_hash_matches_equal_substrings() {
+        let hash = RollingHash::new(b"abcababcab");
+        assert_eq!(hash.get(0, 5), hash.get(5, 10));
+        assert_eq!(hash.get(0, 4), hash.get(5, 9));
+        assert_ne!(hash.get(0, 4), hash.get(1, 5));
+        let single = RollingHash::new(b"x");
+        assert_eq!(single.get(0, 1), single.get(0, 1));
+    }
+}
