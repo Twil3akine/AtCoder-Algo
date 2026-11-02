@@ -4,18 +4,18 @@ use std::collections::VecDeque;
 
 /// 始点から各頂点への最短距離を求めます。
 ///
-/// \`graph[v]\` は \`(行き先, 重み)\` の列です。重みは0または1とし、
-/// それ以外の重みを見つけた場合はpanicします。到達不能な頂点には \`None\` を返します。
-/// 頂点数を \`V\`、辺数を \`E\` とすると計算量は \`O(V + E)\` です。
+/// `graph[v]` は `(行き先, 重み)` の列です。重みは0または1とし、
+/// それ以外の重みを見つけた場合はpanicします。到達不能な頂点には `None` を返します。
+/// 頂点数を `V`、辺数を `E` とすると計算量は `O(V + E)` です。
 ///
 /// # Examples
 ///
-/// \`\`\`
+/// ```
 /// use atcoder::graph::zero_one_bfs::zero_one_bfs;
 ///
 /// let graph = vec![vec![(1, 1), (2, 0)], vec![(3, 0)], vec![(1, 0)], vec![]];
 /// assert_eq!(zero_one_bfs(&graph, 0), vec![Some(0), Some(0), Some(0), Some(0)]);
-/// \`\`\`
+/// ```
 pub fn zero_one_bfs(graph: &[Vec<(usize, usize)>], start: usize) -> Vec<Option<usize>> {
     assert!(start < graph.len(), "start out of bounds");
     let mut dist = vec![usize::MAX; graph.len()];
