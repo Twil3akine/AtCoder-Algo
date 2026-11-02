@@ -35,6 +35,53 @@ pub fn diameter(graph: &[Vec<usize>]) -> (usize, Vec<usize>) {
     (depth[goal], vertices)
 }
 
+/// 木の直径と中心をまとめて求めた結果です。
+///
+/// `path` は直径の両端を含む頂点列で、`length` はその辺数です。
+/// `centers` は直径パスの中点にあたる1頂点または2頂点です。
+/// 空の木では `length == 0` で、`path` と `centers` は空配列です。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiameterInfo {
+    /// 直径の長さ（辺数）です。
+    pub length: usize,
+    /// 直径の両端を含む頂点列です。
+    pub path: Vec<usize>,
+    /// 木の中心（1頂点または2頂点）です。
+    pub centers: Vec<usize>,
+}
+
+/// 木の直径の長さ・パス・中心をまとめて返します。
+///
+/// 直径を一度求め、中心をそのパスから取り出します。直径が複数あれば、
+/// そのうち1本のパスを返します。計算量・メモリ量は `O(N)` です。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::graph::tree::diameter_info;
+///
+/// let graph = vec![vec![1], vec![0, 2], vec![1, 3], vec![2]];
+/// let info = diameter_info(&graph);
+/// assert_eq!(info.length, 3);
+/// assert_eq!(info.path.len(), 4);
+/// let mut centers = info.centers;
+/// centers.sort_unstable();
+/// assert_eq!(centers, vec![1, 2]);
+/// ```
+pub fn diameter_info(graph: &[Vec<usize>]) -> DiameterInfo {
+    let (length, path) = diameter(graph);
+    let centers = if path.is_empty() {
+        Vec::new()
+    } else {
+        path[length / 2..=length.div_ceil(2)].to_vec()
+    };
+    DiameterInfo {
+        length,
+        path,
+        centers,
+    }
+}
+
 /// `start` から `goal` への単純パスを、両端を含む頂点列で返します。
 ///
 /// 同じ頂点を指定した場合は `[start]` です。計算量・メモリ量は `O(N)` です。
@@ -50,12 +97,7 @@ pub fn path(graph: &[Vec<usize>], start: usize, goal: usize) -> Vec<usize> {
 /// 直径の中央にある1頂点または2頂点です。2頂点の場合の順序は未規定です。
 /// 空の木には空配列を返します。計算量・メモリ量は `O(N)` です。
 pub fn centers(graph: &[Vec<usize>]) -> Vec<usize> {
-    let (length, vertices) = diameter(graph);
-    if vertices.is_empty() {
-        Vec::new()
-    } else {
-        vertices[length / 2..=length.div_ceil(2)].to_vec()
-    }
+    diameter_info(graph).centers
 }
 
 /// 木の重心を昇順で返します。
@@ -182,6 +224,33 @@ mod tests {
         let mut middle = centers(&graph);
         middle.sort_unstable();
         assert_eq!(middle, vec![0, 1]);
+    }
+
+    #[test]
+    fn diameter_info_handles_empty_even_and_odd_paths() {
+        let empty = diameter_info(&[]);
+        assert_eq!(empty.length, 0);
+        assert!(empty.path.is_empty());
+        assert!(empty.centers.is_empty());
+
+        let singleton = diameter_info(&[vec![]]);
+        assert_eq!(singleton.length, 0);
+        assert_eq!(singleton.path, vec![0]);
+        assert_eq!(singleton.centers, vec![0]);
+
+        for n in [4, 5] {
+            let mut graph = vec![vec![]; n];
+            for v in 1..n {
+                graph[v - 1].push(v);
+                graph[v].push(v - 1);
+            }
+            let info = diameter_info(&graph);
+            assert_eq!(info.length, n - 1);
+            assert_eq!((info.length, info.path.clone()), diameter(&graph));
+            let mut middle = info.centers;
+            middle.sort_unstable();
+            assert_eq!(middle, centers(&graph));
+        }
     }
 
     #[test]
