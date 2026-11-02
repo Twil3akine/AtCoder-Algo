@@ -28,7 +28,12 @@ pub struct Swag<T, F> {
 impl<T: Clone, F: Fn(T, T) -> T> Swag<T, F> {
     /// 集約演算と単位元を指定して空のキューを作ります。
     pub fn new(op: F, identity: T) -> Self {
-        Self { front: Vec::new(), back: Vec::new(), op, identity }
+        Self {
+            front: Vec::new(),
+            back: Vec::new(),
+            op,
+            identity,
+        }
     }
 
     /// キューの末尾に値を追加します。償却計算量は `O(1)` です。
@@ -85,10 +90,13 @@ mod tests {
 
     #[test]
     fn ordered_noncommutative_aggregation() {
-        let mut q = Swag::new(|mut a: String, b: String| {
-            a.push_str(&b);
-            a
-        }, String::new());
+        let mut q = Swag::new(
+            |mut a: String, b: String| {
+                a.push_str(&b);
+                a
+            },
+            String::new(),
+        );
         assert_eq!(q.fold(), "");
         for s in ["a", "b", "c"] {
             q.push(s.to_string());
