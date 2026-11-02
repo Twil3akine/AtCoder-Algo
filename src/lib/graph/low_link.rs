@@ -14,19 +14,19 @@ pub struct LowLinkResult {
 
 /// 無向グラフの橋と関節点を求めます。
 ///
-/// \`n\` は頂点数、\`edges\` は両端頂点の組です。非連結グラフ・多重辺・自己ループも扱います。
+/// `n` は頂点数、`edges` は両端頂点の組です。非連結グラフ・多重辺・自己ループも扱います。
 /// 橋は削除すると連結成分の数が増える辺、関節点は削除すると残ったグラフの
-/// 連結成分の数が増える頂点です。計算量・メモリ量は \`O(V + E)\` です。
+/// 連結成分の数が増える頂点です。計算量・メモリ量は `O(V + E)` です。
 ///
 /// # Examples
 ///
-/// \`\`\`
+/// ```
 /// use atcoder::graph::low_link::low_link;
 ///
 /// let r = low_link(4, &[(0, 1), (1, 2), (2, 0), (2, 3)]);
 /// assert_eq!(r.bridges, vec![3]);
 /// assert_eq!(r.articulation_points, vec![2]);
-/// \`\`\`
+/// ```
 pub fn low_link(n: usize, edges: &[(usize, usize)]) -> LowLinkResult {
     let mut graph = vec![Vec::<(usize, usize)>::new(); n];
     for (id, &(u, v)) in edges.iter().enumerate() {
