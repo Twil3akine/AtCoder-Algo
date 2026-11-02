@@ -532,13 +532,13 @@ mod kmp_tests {
     fn prefix_and_overlapping_matches() {
         assert_eq!(prefix_function(b"ababa"), vec![0, 0, 1, 2, 3]);
         assert_eq!(kmp_search(b"abababa", b"aba"), vec![0, 2, 4]);
-        assert_eq!(kmp_search(b"xyz", b"a"), vec![]);
+        assert!(kmp_search(b"xyz", b"a").is_empty());
     }
 
     #[test]
     fn empty_pattern_matches_boundaries() {
         assert_eq!(kmp_search(b"ab", b""), vec![0, 1, 2]);
         assert_eq!(kmp_search(b"", b""), vec![0]);
-        assert_eq!(prefix_function(b""), vec![]);
+        assert!(prefix_function(b"").is_empty());
     }
 }
