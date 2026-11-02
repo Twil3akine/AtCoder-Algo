@@ -35,5 +35,18 @@ jobs:
             find target/doc -maxdepth 3 -type f -name '*search*' -print
             exit 1
           fi
-          grep -R -qF '最遠点' "$search_index"
-          grep -R -qF '無料移動' "$search_index"
+          echo "Search index: $search_index"
+          find "$search_index" -maxdepth 2 -type f -print | head -10
+          first="$(find "$search_index" -type f | head -1)"
+          if [ -n "$first" ]; then
+            head -c 500 "$first"
+            echo
+          fi
+          for alias in '最遠点' '無料移動'; do
+            if grep -R -qF "$alias" "$search_index"; then
+              echo "Indexed alias: $alias"
+            else
+              echo "::error::Missing search alias: $alias"
+              exit 1
+            fi
+          done
