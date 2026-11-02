@@ -326,9 +326,7 @@ pub fn convex_hull(points: &[Point]) -> Vec<Point> {
 
     let mut lower: Vec<Point> = Vec::new();
     for &point in &points {
-        while lower.len() >= 2
-            && ccw(lower[lower.len() - 2], lower[lower.len() - 1], point) <= 0
-        {
+        while lower.len() >= 2 && ccw(lower[lower.len() - 2], lower[lower.len() - 1], point) <= 0 {
             lower.pop();
         }
         lower.push(point);
@@ -336,9 +334,7 @@ pub fn convex_hull(points: &[Point]) -> Vec<Point> {
 
     let mut upper: Vec<Point> = Vec::new();
     for &point in points.iter().rev() {
-        while upper.len() >= 2
-            && ccw(upper[upper.len() - 2], upper[upper.len() - 1], point) <= 0
-        {
+        while upper.len() >= 2 && ccw(upper[upper.len() - 2], upper[upper.len() - 1], point) <= 0 {
             upper.pop();
         }
         upper.push(point);
@@ -358,14 +354,23 @@ mod convex_hull_tests {
     #[test]
     fn square_interior_and_duplicates() {
         let points = [
-            Point::new(1, 1), Point::new(2, 2), Point::new(0, 2),
-            Point::new(0, 0), Point::new(2, 0), Point::new(0, 0),
+            Point::new(1, 1),
+            Point::new(2, 2),
+            Point::new(0, 2),
+            Point::new(0, 0),
+            Point::new(2, 0),
+            Point::new(0, 0),
             Point::new(1, 0),
         ];
-        assert_eq!(convex_hull(&points), vec![
-            Point::new(0, 0), Point::new(2, 0),
-            Point::new(2, 2), Point::new(0, 2),
-        ]);
+        assert_eq!(
+            convex_hull(&points),
+            vec![
+                Point::new(0, 0),
+                Point::new(2, 0),
+                Point::new(2, 2),
+                Point::new(0, 2),
+            ]
+        );
     }
 
     #[test]
