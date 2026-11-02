@@ -295,3 +295,91 @@ mod tests {
         assert_eq!(polygon_area2(&triangle), 6);
     }
 }
+
+/// 点集合の凸包を反時計回りの頂点列で返します。
+///
+/// Andrewの単調連鎖法を使用し、左下（x、次にyが最小）の頂点から始めます。
+/// 最初の点を末尾に繰り返しません。内部の点や辺上の中間点、重複点は除外します。
+/// 全ての点が一直線上にある場合は両端の2点（1点しかなければ1点）を返します。
+/// 空入力には空配列を返します。座標の積・差は `isize` に収まる必要があります。
+/// 計算量は `O(N log N)`、追加メモリは `O(N)` です。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::geometry::{convex_hull, Point};
+///
+/// let points = [Point::new(0, 0), Point::new(2, 0), Point::new(1, 1),
+///               Point::new(2, 2), Point::new(0, 2)];
+/// assert_eq!(convex_hull(&points), vec![
+///     Point::new(0, 0), Point::new(2, 0),
+///     Point::new(2, 2), Point::new(0, 2),
+/// ]);
+/// ```
+pub fn convex_hull(points: &[Point]) -> Vec<Point> {
+    let mut points = points.to_vec();
+    points.sort_unstable_by_key(|point| (point.x, point.y));
+    points.dedup();
+    if points.len() <= 2 {
+        return points;
+    }
+
+    let mut lower: Vec<Point> = Vec::new();
+    for &point in &points {
+        while lower.len() >= 2 && ccw(lower[lower.len() - 2], lower[lower.len() - 1], point) <= 0 {
+            lower.pop();
+        }
+        lower.push(point);
+    }
+
+    let mut upper: Vec<Point> = Vec::new();
+    for &point in points.iter().rev() {
+        while upper.len() >= 2 && ccw(upper[upper.len() - 2], upper[upper.len() - 1], point) <= 0 {
+            upper.pop();
+        }
+        upper.push(point);
+    }
+
+    // 両端が重複するため、各列から終端を1つずつ取り除きます。
+    lower.pop();
+    upper.pop();
+    lower.extend(upper);
+    lower
+}
+
+#[cfg(test)]
+mod convex_hull_tests {
+    use super::{convex_hull, Point};
+
+    #[test]
+    fn square_interior_and_duplicates() {
+        let points = [
+            Point::new(1, 1),
+            Point::new(2, 2),
+            Point::new(0, 2),
+            Point::new(0, 0),
+            Point::new(2, 0),
+            Point::new(0, 0),
+            Point::new(1, 0),
+        ];
+        assert_eq!(
+            convex_hull(&points),
+            vec![
+                Point::new(0, 0),
+                Point::new(2, 0),
+                Point::new(2, 2),
+                Point::new(0, 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_singleton_and_collinear() {
+        assert_eq!(convex_hull(&[]), vec![]);
+        assert_eq!(convex_hull(&[Point::new(3, 4)]), vec![Point::new(3, 4)]);
+        assert_eq!(
+            convex_hull(&[Point::new(1, 1), Point::new(2, 2), Point::new(0, 0)]),
+            vec![Point::new(0, 0), Point::new(2, 2)]
+        );
+    }
+}

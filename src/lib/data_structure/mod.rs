@@ -4,5 +4,8 @@ pub mod dual_segment_tree;
 pub mod fenwick_tree;
 pub mod heap;
 pub mod lazy_segment_tree;
+pub mod rollback_union_find;
 pub mod segment_tree;
+pub mod sparse_table;
+pub mod swag;
 pub mod union_find;

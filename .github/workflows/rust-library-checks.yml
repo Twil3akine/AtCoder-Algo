@@ -1,0 +1,25 @@
+name: Rust library checks
+
+on:
+  push:
+    branches:
+      - feat/advanced-algorithms-centroids-20261102
+  pull_request:
+
+jobs:
+  library:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check modified library formatting
+        run: |
+          rustfmt --check src/lib/geometry.rs src/lib/string.rs src/lib/graph/{tree,scc,low_link,zero_one_bfs,max_flow}.rs src/lib/data_structure/{sparse_table,swag,rollback_union_find}.rs
+      - name: Test library
+        run: cargo test --all-targets
+      - name: Test documentation
+        run: cargo test --doc
+      - name: Test bundler
+        run: cargo test --manifest-path tools/bundler/Cargo.toml
