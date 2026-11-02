@@ -1,0 +1,29 @@
+name: Check cheatsheet Rustdoc
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib.rs'
+      - 'src/lib/cheatsheet/**'
+      - 'docs/cheatsheet/**'
+      - '.github/workflows/cheatsheet-check.yml'
+
+jobs:
+  rustdoc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check Rust formatting
+        run: rustfmt --check src/lib.rs src/lib/cheatsheet/mod.rs
+      - name: Build Rustdoc and validate links
+        run: RUSTDOCFLAGS='-D rustdoc::broken_intra_doc_links' cargo doc --no-deps
+      - name: Verify generated cheatsheet pages and search aliases
+        run: |
+          test -f target/doc/atcoder/cheatsheet/index.html
+          test -f target/doc/atcoder/cheatsheet/tree/diameter_pairs/index.html
+          test -f target/doc/atcoder/cheatsheet/graph/low_link/index.html
+          grep -qF '最遠点' target/doc/search-index.js
+          grep -qF '無料移動' target/doc/search-index.js
