@@ -461,7 +461,6 @@ mod z_algorithm_and_rolling_hash_tests {
     }
 }
 
-
 /// 列の各接頭辞について、先頭と末尾が一致する最長の真の接頭辞長を求めます。
 ///
 /// KMP法で使う接頭辞関数です。`pi[i]` は `sequence[..=i]` の最長の
