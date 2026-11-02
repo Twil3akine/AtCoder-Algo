@@ -235,7 +235,6 @@ pub fn polygon_area2(points: &[Point]) -> isize {
         .sum()
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
