@@ -25,5 +25,15 @@ jobs:
           test -f target/doc/atcoder/cheatsheet/index.html
           test -f target/doc/atcoder/cheatsheet/tree/diameter_pairs/index.html
           test -f target/doc/atcoder/cheatsheet/graph/low_link/index.html
-          grep -qF '最遠点' target/doc/search-index.js
-          grep -qF '無料移動' target/doc/search-index.js
+          # rustdocの版により、検索索引はsearch.index/内の分割ファイルにもなります。
+          if [ -d target/doc/search.index ]; then
+            search_index=target/doc/search.index
+          else
+            search_index=target/doc/search-index.js
+          fi
+          if [ ! -e "$search_index" ]; then
+            find target/doc -maxdepth 3 -type f -name '*search*' -print
+            exit 1
+          fi
+          grep -R -qF '最遠点' "$search_index"
+          grep -R -qF '無料移動' "$search_index"
