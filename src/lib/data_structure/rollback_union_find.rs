@@ -72,7 +72,7 @@ impl RollbackUnionFind {
 
     /// 頂点 `v` の属する集合のサイズを返します。
     pub fn size(&self, v: usize) -> usize {
-        -self.parent_or_size[self.find(v)] as usize
+        (-self.parent_or_size[self.find(v)]) as usize
     }
 
     /// 現在の連結成分数を返します。
