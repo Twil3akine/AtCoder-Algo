@@ -249,7 +249,9 @@ mod tests {
             assert_eq!((info.length, info.path.clone()), diameter(&graph));
             let mut middle = info.centers;
             middle.sort_unstable();
-            assert_eq!(middle, centers(&graph));
+            let mut expected = centers(&graph);
+            expected.sort_unstable();
+            assert_eq!(middle, expected);
         }
     }
 
