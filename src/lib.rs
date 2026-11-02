@@ -5,6 +5,9 @@
 
 #[path = "lib/algorithm/mod.rs"]
 pub mod algorithm;
+#[cfg(doc)]
+#[path = "lib/cheatsheet/mod.rs"]
+pub mod cheatsheet;
 #[path = "lib/data_structure/mod.rs"]
 pub mod data_structure;
 #[path = "lib/debug.rs"]

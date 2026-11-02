@@ -109,6 +109,11 @@ APIドキュメントは次のコマンドで生成できます。
 cargo doc --no-deps --open
 ```
 
+問題文の特徴から解法を逆引きできる[解法チートシート](docs/cheatsheet/index.md)もRustdocに含まれます。
+Rustdocの `atcoder::cheatsheet` から「木」「グラフ」のケース別ページを閲覧できます。
+検索欄では「最遠点」「共通祖先」「橋」などのキーワードから探せます。
+チートシートはドキュメント専用で、通常のコンパイルと提出コードには含めません。
+
 ## 提出用バンドル
 
 `cargo bundle`は`src/main.rs`をRustの構文木として解析し、`atcoder::...`で実際に参照した
