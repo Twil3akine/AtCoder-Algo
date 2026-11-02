@@ -51,7 +51,13 @@ mod tests {
 
     #[test]
     fn uses_free_edges_and_marks_unreachable() {
-        let g = vec![vec![(1, 1), (2, 0)], vec![(3, 1)], vec![(1, 0)], vec![], vec![]];
+        let g = vec![
+            vec![(1, 1), (2, 0)],
+            vec![(3, 1)],
+            vec![(1, 0)],
+            vec![],
+            vec![],
+        ];
         assert_eq!(
             zero_one_bfs(&g, 0),
             vec![Some(0), Some(0), Some(0), Some(1), None]
