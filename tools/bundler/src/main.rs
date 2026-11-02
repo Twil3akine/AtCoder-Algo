@@ -1322,6 +1322,77 @@ pub trait DecimalDigitsExt { fn parse_usize(&self) -> Option<usize>; }
     }
 
     #[test]
+    fn bundles_tree_modules_with_only_their_required_dependencies() {
+        let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let library = Library::load(&project.join("src/lib.rs")).unwrap();
+        for (module, import, body) in [
+            (
+                "tree",
+                "use atcoder::graph::tree::{diameter, path, centers};",
+                "assert_eq!(diameter(&graph), (0, vec![0]));
+                 assert_eq!(path(&graph, 0, 0), vec![0]);
+                 assert_eq!(centers(&graph), vec![0]);",
+            ),
+            (
+                "lca",
+                "use atcoder::graph::lca::Lca;",
+                "let tree = Lca::new(&graph, 0);
+                 assert_eq!(tree.lca(0, 0), 0);
+                 assert_eq!(tree.distance(0, 0), 0);
+                 assert_eq!(tree.kth_ancestor(0, 0), Some(0));
+                 assert_eq!(tree.jump(0, 0, 0), Some(0));",
+            ),
+            (
+                "hld",
+                "use atcoder::graph::hld::{Hld, PathSegment};",
+                "let tree = Hld::new(&graph, 0);
+                 let _: Vec<PathSegment> = tree.path(0, 0);
+                 assert!(tree.edge_path(0, 0).is_empty());
+                 assert_eq!(tree.subtree_range(0), 0..1);
+                 assert_eq!(tree.vertex(tree.index(0)), 0);",
+            ),
+            (
+                "rerooting",
+                "use atcoder::graph::rerooting::rerooting;",
+                "let dp = rerooting(&graph, 0usize, |a, b| a + b,
+                     |value, _| value + 1, |value, _, _| *value);
+                 assert_eq!(dp, vec![1]);",
+            ),
+        ] {
+            let main_source = format!("{import}\nfn main() {{ let graph = vec![vec![]]; {body} }}");
+            let main = syn::parse_file(&main_source).unwrap();
+            let selected = select_library(&main, &library, "atcoder");
+            let expected: std::collections::BTreeSet<ModulePath> = [
+                vec!["graph".into()],
+                vec!["graph".into(), module.into()],
+                vec!["graph".into(), "tree".into()],
+            ]
+            .into_iter()
+            .collect();
+            assert_eq!(selected.modules, expected);
+            let bundled = super::render_submission(
+                &main_source,
+                &main,
+                &library,
+                &selected,
+                "atcoder",
+                &"0".repeat(40),
+            )
+            .unwrap();
+            assert!(bundled.contains("pub(crate) fn rooted_order"));
+            assert!(!bundled.contains("mod tests"));
+            if module != "tree" {
+                assert!(!bundled.contains("pub fn diameter"));
+            }
+            let source = tempfile::tempdir().unwrap();
+            let output = source.path().join("bundle.rs");
+            fs::write(&output, bundled).unwrap();
+            let manifest = toml::from_str("").unwrap();
+            compile_with_cargo(&output, "2021", &manifest, source.path()).unwrap();
+        }
+    }
+
+    #[test]
     fn removes_only_exported_macros_from_grouped_import() {
         let macros = [("input".into(), vec!["io".into()])].into_iter().collect();
         for source in [
