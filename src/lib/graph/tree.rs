@@ -106,7 +106,7 @@ mod centroid_tests {
 
     #[test]
     fn empty_path_and_star() {
-        assert_eq!(centroids(&[]), vec![]);
+        assert!(centroids(&[]).is_empty());
         assert_eq!(centroids(&[vec![]]), vec![0]);
         let chain = vec![vec![1], vec![0, 2], vec![1, 3], vec![2]];
         assert_eq!(centroids(&chain), vec![1, 2]);
