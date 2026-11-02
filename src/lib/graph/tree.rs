@@ -58,6 +58,79 @@ pub fn centers(graph: &[Vec<usize>]) -> Vec<usize> {
     }
 }
 
+
+/// 木の重心を昇順で返します。
+///
+/// 重心は、頂点を取り除いてできる各連結成分の頂点数が `N / 2` 以下になる頂点です。
+/// 1個または2個存在し、直径の中点である木の中心とは異なります。
+/// 空の木には空配列を返します。計算量・メモリ量は `O(N)` です。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::graph::tree::centroids;
+///
+/// let graph = vec![vec![1], vec![0, 2], vec![1, 3], vec![2]];
+/// assert_eq!(centroids(&graph), vec![1, 2]);
+/// ```
+pub fn centroids(graph: &[Vec<usize>]) -> Vec<usize> {
+    let n = graph.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let (parent, _, order) = rooted_order(graph, 0);
+    let mut size = vec![1usize; n];
+    for &v in order.iter().rev() {
+        if v != 0 {
+            size[parent[v]] += size[v];
+        }
+    }
+
+    (0..n)
+        .filter(|&v| {
+            // 親方向の連結成分と、子の各部分木をすべて確認します。
+            let largest = graph[v]
+                .iter()
+                .filter(|&&to| to != parent[v])
+                .map(|&to| size[to])
+                .chain(std::iter::once(n - size[v]))
+                .max()
+                .unwrap_or(0);
+            largest <= n / 2
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod centroid_tests {
+    use super::{centers, centroids};
+
+    #[test]
+    fn empty_path_and_star() {
+        assert_eq!(centroids(&[]), vec![]);
+        assert_eq!(centroids(&[vec![]]), vec![0]);
+        let chain = vec![vec![1], vec![0, 2], vec![1, 3], vec![2]];
+        assert_eq!(centroids(&chain), vec![1, 2]);
+        let star = vec![vec![1, 2, 3, 4], vec![0], vec![0], vec![0], vec![0]];
+        assert_eq!(centroids(&star), vec![0]);
+    }
+
+    #[test]
+    fn centroid_is_not_always_center() {
+        let mut graph = vec![vec![]; 11];
+        for v in 1..=5 {
+            graph[v - 1].push(v);
+            graph[v].push(v - 1);
+        }
+        for v in 6..=10 {
+            graph[0].push(v);
+            graph[v].push(0);
+        }
+        assert_eq!(centroids(&graph), vec![0]);
+        assert_eq!(centers(&graph), vec![2]);
+    }
+}
+
 // 根の親は根自身とし、親が子より先に現れる順序を作ります。
 pub(crate) fn rooted_order(
     graph: &[Vec<usize>],
