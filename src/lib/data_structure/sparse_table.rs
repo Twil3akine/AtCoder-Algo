@@ -11,7 +11,7 @@
 /// ```
 /// use atcoder::data_structure::sparse_table::SparseTable;
 ///
-/// let st = SparseTable::new(vec![8, 3, 7, 2, 9], |a, b| a.min(b));
+/// let st = SparseTable::new(vec![8, 3, 7, 2, 9], |a: i32, b| a.min(b));
 /// assert_eq!(st.get(1, 4), 2);
 /// ```
 pub struct SparseTable<T, F> {
@@ -72,12 +72,12 @@ mod tests {
 
     #[test]
     fn range_min_max_and_empty() {
-        let min = SparseTable::new(vec![8, 3, 7, 2, 9], |a, b| a.min(b));
+        let min = SparseTable::new(vec![8, 3, 7, 2, 9], |a: i32, b| a.min(b));
         assert_eq!(min.get(1, 4), 2);
         assert_eq!(min.get(0, 1), 8);
-        let max = SparseTable::new(vec![8, 3, 7, 2, 9], |a, b| a.max(b));
+        let max = SparseTable::new(vec![8, 3, 7, 2, 9], |a: i32, b| a.max(b));
         assert_eq!(max.get(0, 5), 9);
-        let empty = SparseTable::<i32, _>::new(vec![], |a, b| a.min(b));
+        let empty = SparseTable::<i32, _>::new(vec![], |a: i32, b| a.min(b));
         assert!(empty.is_empty());
     }
 }
