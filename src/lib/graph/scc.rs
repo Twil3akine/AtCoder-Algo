@@ -14,19 +14,19 @@ pub struct SccResult {
 
 /// 有向グラフを強連結成分へ分解します。
 ///
-/// グラフは \`graph[v] = v から出る辺の行き先\` で与えます。
-/// 重複辺と自己ループを含むグラフも扱えます。計算量・メモリ量は \`O(V + E)\` です。
+/// グラフは `graph[v] = v から出る辺の行き先` で与えます。
+/// 重複辺と自己ループを含むグラフも扱えます。計算量・メモリ量は `O(V + E)` です。
 ///
 /// # Examples
 ///
-/// \`\`\`
+/// ```
 /// use atcoder::graph::scc::scc;
 ///
 /// let graph = vec![vec![1], vec![0, 2], vec![3], vec![2]];
 /// let result = scc(&graph);
 /// assert_eq!(result.groups, vec![vec![0, 1], vec![2, 3]]);
 /// assert_eq!(result.ids, vec![0, 0, 1, 1]);
-/// \`\`\`
+/// ```
 pub fn scc(graph: &[Vec<usize>]) -> SccResult {
     let n = graph.len();
     let mut rev = vec![Vec::new(); n];
