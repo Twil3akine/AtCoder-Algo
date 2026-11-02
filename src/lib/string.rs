@@ -460,3 +460,86 @@ mod z_algorithm_and_rolling_hash_tests {
         assert_eq!(single.get(0, 1), single.get(0, 1));
     }
 }
+
+
+/// 列の各接頭辞について、先頭と末尾が一致する最長の真の接頭辞長を求めます。
+///
+/// KMP法で使う接頭辞関数です。`pi[i]` は `sequence[..=i]` の最長の
+/// 真の接頭辞（列全体より短い接頭辞）であり、同時に接尾辞でもある長さです。
+/// 計算量・追加メモリは `O(N)` です。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::string::prefix_function;
+///
+/// assert_eq!(prefix_function(b"ababa"), vec![0, 0, 1, 2, 3]);
+/// ```
+pub fn prefix_function<T: Eq>(sequence: &[T]) -> Vec<usize> {
+    let n = sequence.len();
+    let mut pi = vec![0; n];
+    for i in 1..n {
+        let mut j = pi[i - 1];
+        while j > 0 && sequence[i] != sequence[j] {
+            j = pi[j - 1];
+        }
+        if sequence[i] == sequence[j] {
+            j += 1;
+        }
+        pi[i] = j;
+    }
+    pi
+}
+
+/// 列 `text` の中に現れる `pattern` の開始添字を昇順で返します。
+///
+/// KMP法によって検索し、計算量は `O(N + M)`、追加メモリは `O(M)` です。
+/// 空パターンは全ての境界に一致するものとし、`0..=text.len()` を返します。
+///
+/// # Examples
+///
+/// ```
+/// use atcoder::string::kmp_search;
+///
+/// assert_eq!(kmp_search(b"abababa", b"aba"), vec![0, 2, 4]);
+/// ```
+pub fn kmp_search<T: Eq>(text: &[T], pattern: &[T]) -> Vec<usize> {
+    if pattern.is_empty() {
+        return (0..=text.len()).collect();
+    }
+    let pi = prefix_function(pattern);
+    let mut matches = Vec::new();
+    let mut matched = 0;
+    for (i, element) in text.iter().enumerate() {
+        while matched > 0 && element != &pattern[matched] {
+            matched = pi[matched - 1];
+        }
+        if element == &pattern[matched] {
+            matched += 1;
+        }
+        if matched == pattern.len() {
+            matches.push(i + 1 - matched);
+            matched = pi[matched - 1];
+        }
+    }
+    matches
+}
+
+#[cfg(test)]
+mod kmp_tests {
+    use super::{kmp_search, prefix_function};
+
+    #[test]
+    fn prefix_and_overlapping_matches() {
+        assert_eq!(prefix_function(b"ababa"), vec![0, 0, 1, 2, 3]);
+        assert_eq!(kmp_search(b"abababa", b"aba"), vec![0, 2, 4]);
+        assert_eq!(kmp_search(b"xyz", b"a"), vec![]);
+    }
+
+    #[test]
+    fn empty_pattern_matches_boundaries() {
+        assert_eq!(kmp_search(b"ab", b""), vec![0, 1, 2]);
+        assert_eq!(kmp_search(b"", b""), vec![0]);
+        assert_eq!(prefix_function(b""), vec![]);
+    }
+}
