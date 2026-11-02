@@ -58,7 +58,8 @@ impl RollbackUnionFind {
         if self.parent_or_size[a] > self.parent_or_size[b] {
             std::mem::swap(&mut a, &mut b);
         }
-        self.history.push(Some((a, self.parent_or_size[a], b, self.parent_or_size[b])));
+        self.history
+            .push(Some((a, self.parent_or_size[a], b, self.parent_or_size[b])));
         self.parent_or_size[a] += self.parent_or_size[b];
         self.parent_or_size[b] = a as isize;
         self.groups -= 1;
