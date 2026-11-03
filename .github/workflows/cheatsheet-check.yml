@@ -28,11 +28,21 @@ jobs:
           test -f target/doc/atcoder_cheatsheet/index.html
           test -f target/doc/atcoder_cheatsheet/tree/diameter_pairs/index.html
           test -f target/doc/atcoder_cheatsheet/graph/low_link/index.html
+          test -f target/doc/atcoder_cheatsheet/data_structure/inversion_count/index.html
+          test -f target/doc/atcoder_cheatsheet/array/compress/index.html
+          test -f target/doc/atcoder_cheatsheet/string/palindrome/index.html
+          test -f target/doc/atcoder_cheatsheet/math/combinatorics/index.html
+          test -f target/doc/atcoder_cheatsheet/geometry/convex_hull/index.html
+          test -f target/doc/atcoder_cheatsheet/utility/grid_neighbors/index.html
           test ! -e target/doc/atcoder/cheatsheet/index.html
           test -d target/doc/search.index/alias
           find target/doc/search.index/alias -type f -name '*.js' | grep -q .
           grep -qF '#[doc(alias = "最遠点")]' docs/cheatsheet/src/lib.rs
           grep -qF '#[doc(alias = "無料移動")]' docs/cheatsheet/src/lib.rs
+          grep -qF '#[doc(alias = "転倒数")]' docs/cheatsheet/src/lib.rs
+          grep -qF '#[doc(alias = "回文")]' docs/cheatsheet/src/lib.rs
+          grep -qF '#[doc(alias = "素因数分解")]' docs/cheatsheet/src/lib.rs
+          grep -qF '#[doc(alias = "凸包")]' docs/cheatsheet/src/lib.rs
       - name: Verify document tests and Bundler
         run: |
           cargo test --locked --doc

@@ -225,3 +225,113 @@ pub mod string {
     #[doc(alias = "10進数を読む")]
     pub mod parse_digits {}
 }
+
+#[doc = include_str!("../math/index.md")]
+#[doc(alias = "数学・数え上げ")]
+pub mod math {
+    #[doc = include_str!("../math/mod_int.md")]
+    #[doc(alias = "剰余演算")]
+    #[doc(alias = "998244353")]
+    #[doc(alias = "modint")]
+    pub mod mod_int {}
+
+    #[doc = include_str!("../math/combinatorics.md")]
+    #[doc(alias = "nCr")]
+    #[doc(alias = "nPr")]
+    #[doc(alias = "組合せの数")]
+    pub mod combinatorics {}
+
+    #[doc = include_str!("../math/sieve.md")]
+    #[doc(alias = "素数判定")]
+    #[doc(alias = "素因数分解")]
+    #[doc(alias = "最小素因数")]
+    pub mod sieve {}
+
+    #[doc = include_str!("../math/fast_pow.md")]
+    #[doc(alias = "高速累乗")]
+    #[doc(alias = "mod_pow")]
+    #[doc(alias = "繰り返し二乗")]
+    pub mod fast_pow {}
+
+    #[doc = include_str!("../math/gcd_lcm.md")]
+    #[doc(alias = "最大公約数")]
+    #[doc(alias = "最小公倍数")]
+    #[doc(alias = "gcd")]
+    #[doc(alias = "lcm")]
+    pub mod gcd_lcm {}
+
+    #[doc = include_str!("../math/floor_sum.md")]
+    #[doc(alias = "床関数の和")]
+    #[doc(alias = "整数除算の総和")]
+    #[doc(alias = "floor_sum")]
+    pub mod floor_sum {}
+
+    #[doc = include_str!("../math/radix.md")]
+    #[doc(alias = "進数変換")]
+    #[doc(alias = "2進数に変換")]
+    #[doc(alias = "桁DPの準備")]
+    pub mod radix {}
+
+    #[doc = include_str!("../math/saturating.md")]
+    #[doc(alias = "上限で打ち切る")]
+    #[doc(alias = "飽和演算")]
+    #[doc(alias = "カウントの上限")]
+    pub mod saturating {}
+}
+
+#[doc = include_str!("../geometry/index.md")]
+#[doc(alias = "幾何")]
+pub mod geometry {
+    #[doc = include_str!("../geometry/ccw.md")]
+    #[doc(alias = "点が左側")]
+    #[doc(alias = "点が右側")]
+    #[doc(alias = "ccw")]
+    #[doc(alias = "三点の向き")]
+    pub mod ccw {}
+
+    #[doc = include_str!("../geometry/segment_intersection.md")]
+    #[doc(alias = "線分の交差")]
+    #[doc(alias = "線分が接する")]
+    #[doc(alias = "線分が重なる")]
+    pub mod segment_intersection {}
+
+    #[doc = include_str!("../geometry/convex_hull.md")]
+    #[doc(alias = "凸包")]
+    #[doc(alias = "外周の点")]
+    #[doc(alias = "点群を囲む")]
+    pub mod convex_hull {}
+
+    #[doc = include_str!("../geometry/polygon_area.md")]
+    #[doc(alias = "多角形の面積")]
+    #[doc(alias = "靴紐公式")]
+    #[doc(alias = "面積の2倍")]
+    pub mod polygon_area {}
+
+    #[doc = include_str!("../geometry/polar_sort.md")]
+    #[doc(alias = "角度順")]
+    #[doc(alias = "偏角ソート")]
+    #[doc(alias = "極角")]
+    pub mod polar_sort {}
+
+    #[doc = include_str!("../geometry/distance_squared.md")]
+    #[doc(alias = "距離の比較")]
+    #[doc(alias = "平方根を使わない")]
+    #[doc(alias = "ユークリッド距離")]
+    pub mod distance_squared {}
+}
+
+#[doc = include_str!("../utility/index.md")]
+#[doc(alias = "グリッド・乱択")]
+pub mod utility {
+    #[doc = include_str!("../utility/grid_neighbors.md")]
+    #[doc(alias = "4近傍")]
+    #[doc(alias = "8近傍")]
+    #[doc(alias = "グリッドの隣接マス")]
+    pub mod grid_neighbors {}
+
+    #[doc = include_str!("../utility/randomized_search.md")]
+    #[doc(alias = "乱択")]
+    #[doc(alias = "焼きなましの乱数")]
+    #[doc(alias = "ランダムテスト")]
+    pub mod randomized_search {}
+}
