@@ -263,7 +263,6 @@ pub mod math {
     #[doc = include_str!("../math/floor_sum.md")]
     #[doc(alias = "床関数の和")]
     #[doc(alias = "整数除算の総和")]
-    #[doc(alias = "floor_sum")]
     pub mod floor_sum {}
 
     #[doc = include_str!("../math/radix.md")]
@@ -285,7 +284,6 @@ pub mod geometry {
     #[doc = include_str!("../geometry/ccw.md")]
     #[doc(alias = "点が左側")]
     #[doc(alias = "点が右側")]
-    #[doc(alias = "ccw")]
     #[doc(alias = "三点の向き")]
     pub mod ccw {}
 
