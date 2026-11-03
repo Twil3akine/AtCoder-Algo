@@ -2,6 +2,12 @@
 //!
 //! 実装は用途ごとのモジュールに分かれています。提出コードでは必要な項目だけを
 //! `use atcoder::...` で読み込み、`cargo bundle` で単一ファイルに展開できます。
+//!
+//! ## 解法が思いつかないとき
+//!
+//! **[こういうときに何を使う？ — 解法チートシート](../atcoder_cheatsheet/index.html)**
+//!
+//! 問題文の特徴から解法を逆引きできます。API一覧とは独立したRustdocで検索できます。
 
 #[path = "lib/algorithm/mod.rs"]
 pub mod algorithm;

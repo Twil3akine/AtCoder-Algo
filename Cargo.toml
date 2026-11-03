@@ -9,3 +9,8 @@ rand = "0.8.5"
 
 [dev-dependencies]
 rand = "0.8.5"
+[workspace]
+members = ["docs/cheatsheet"]
+default-members = [".", "docs/cheatsheet"]
+exclude = ["tools/bundler", "runner", "runner/profiles/atcoder", "runner/profiles/codeforces"]
+resolver = "2"
