@@ -4,8 +4,8 @@ on:
   pull_request:
     paths:
       - 'src/lib.rs'
-      - 'src/lib/cheatsheet/**'
       - 'docs/cheatsheet/**'
+      - '.github/workflows/docs.yml'
       - '.github/workflows/cheatsheet-check.yml'
 
 jobs:
@@ -17,17 +17,24 @@ jobs:
         with:
           components: rustfmt
       - name: Check Rust formatting
-        run: rustfmt --check src/lib.rs src/lib/cheatsheet/mod.rs
-      - name: Build Rustdoc and validate links
+        run: rustfmt --check src/lib.rs docs/cheatsheet/src/lib.rs
+      - name: Build library Rustdoc and validate links
         run: RUSTDOCFLAGS='-D rustdoc::broken_intra_doc_links' cargo doc --no-deps
-      - name: Verify generated cheatsheet pages and search index
+      - name: Build separate cheatsheet Rustdoc and validate links
+        run: RUSTDOCFLAGS='-D rustdoc::broken_intra_doc_links' cargo doc --manifest-path docs/cheatsheet/Cargo.toml --target-dir target --no-deps
+      - name: Verify distinct Rustdoc pages and alias index
         run: |
-          test -f target/doc/atcoder/cheatsheet/index.html
-          test -f target/doc/atcoder/cheatsheet/tree/diameter_pairs/index.html
-          test -f target/doc/atcoder/cheatsheet/graph/low_link/index.html
-          # Rustdocの検索索引は圧縮形式です。日本語を生の文字列としてgrepできません。
-          # alias用の検索索引と、対応する検索エイリアスの宣言を確認します。
+          test -f target/doc/atcoder/index.html
+          test -f target/doc/atcoder_cheatsheet/index.html
+          test -f target/doc/atcoder_cheatsheet/tree/diameter_pairs/index.html
+          test -f target/doc/atcoder_cheatsheet/graph/low_link/index.html
+          test ! -e target/doc/atcoder/cheatsheet/index.html
           test -d target/doc/search.index/alias
           find target/doc/search.index/alias -type f -name '*.js' | grep -q .
-          grep -qF '#[doc(alias = "最遠点")]' src/lib/cheatsheet/mod.rs
-          grep -qF '#[doc(alias = "無料移動")]' src/lib/cheatsheet/mod.rs
+          grep -qF '#[doc(alias = "最遠点")]' docs/cheatsheet/src/lib.rs
+          grep -qF '#[doc(alias = "無料移動")]' docs/cheatsheet/src/lib.rs
+      - name: Verify document tests and Bundler
+        run: |
+          cargo test --doc
+          cargo test --manifest-path docs/cheatsheet/Cargo.toml --doc
+          cargo test --manifest-path tools/bundler/Cargo.toml

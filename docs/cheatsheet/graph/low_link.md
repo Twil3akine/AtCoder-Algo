@@ -1,15 +1,22 @@
-# 橋・関節点・1本の辺や1頂点を削除すると分断される
+# 1本の辺や1頂点を消すと分断されるか調べるなら、LowLink
 
-**問題の手掛かり**：道路（辺）や街（頂点）を1つ取り除いた際に、連結成分が増えるか調べる。
+## こういうときに使う
 
-**着眼点**：DFS木において、子の部分木から親より上の祖先へ戻れるかを判定します。
+- ある辺を取り除くと連結成分が増えるか調べたいとき
+- ある頂点を取り除くと残るグラフが分断されるか調べたいとき
 
-**解法**：LowLinkを用いて橋（辺）と関節点（頂点）をまとめて列挙します。
+## 使うアルゴリズム
 
-**適用条件・注意**：無向グラフが対象です。多重辺では「親頂点」だけでなく辺IDを区別する必要があります。
+**LowLink（橋・関節点の検出）**を用います。
 
-**計算量**：O(V + E)。
+## 解き方
 
-**使うAPI**：[`low_link()`](crate::graph::low_link::low_link)、[`LowLinkResult`](crate::graph::low_link::LowLinkResult)。
+DFS木の訪問順と、祖先へ戻れる最も浅い位置を使って橋と関節点を判定します。
 
-**練習問題**：[AtCoder ABC075 C — Bridge](https://atcoder.jp/contests/abc075/tasks/abc075_c)。
+## 注意・計算量
+
+無向グラフ向けです。多重辺があるときは辺IDを区別する必要があります。 計算量は **O(V + E)** です。
+
+**対応するAPI**：[`low_link()`](atcoder::graph::low_link::low_link)、[`LowLinkResult`](atcoder::graph::low_link::LowLinkResult)
+
+**練習問題**：[AtCoder ABC075 C — Bridge](https://atcoder.jp/contests/abc075/tasks/abc075_c)

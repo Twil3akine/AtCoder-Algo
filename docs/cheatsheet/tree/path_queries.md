@@ -1,15 +1,22 @@
-# 木のパス上の合計・最大値と更新
+# 木のパス上の合計・最大値を更新しながら求めるなら、HLD
 
-**問題の手掛かり**：`u`から`v`へのパスにある頂点・辺の値を集約し、さらに途中で値が変わる。
+## こういうときに使う
 
-**着眼点**：木のパスを、線形配列上の少数の半開区間へ分解します。区間はセグメント木で管理します。
+- 任意の2頂点間のパスにある値を集約したいとき
+- 途中で頂点や辺の値を変更するクエリがあるとき
 
-**解法**：HLDで頂点番号を並べ替え、`path(u, v)`（頂点値）または`edge_path(u, v)`（辺値）で得た区間を集約します。
+## 使うアルゴリズム
 
-**適用条件・注意**：一般的な集約演算には結合則が必要です。非可換な演算では`PathSegment::reversed`による順序を守ります。単に距離だけ求めるならLCAで十分です。
+**HLD（Heavy-Light Decomposition）とセグメント木**を用います。
 
-**計算量**：HLD構築 O(N)、セグメント木でのパスクエリ O(log² N)。
+## 解き方
 
-**使うAPI**：[`Hld`](crate::graph::hld::Hld)、[`SegmentTree`](crate::data_structure::segment_tree::SegmentTree)。
+HLDで木のパスを O(log N) 個の半開区間に分け、各区間をセグメント木で集約します。辺の値は子側頂点に持たせる方法があります。
 
-**練習問題**：[AtCoder ABC294 G — Distance Queries on a Tree](https://atcoder.jp/contests/abc294/tasks/abc294_g)。
+## 注意・計算量
+
+集約演算には結合則が必要です。非可換な演算なら `PathSegment::reversed` に従って順序を守ります。距離だけならLCAの方が簡単です。 計算量は **HLD構築 O(N)、パスクエリ O(log² N)（セグメント木利用）** です。
+
+**対応するAPI**：[`Hld`](atcoder::graph::hld::Hld)、[`SegmentTree`](atcoder::data_structure::segment_tree::SegmentTree)
+
+**練習問題**：[AtCoder ABC294 G — Distance Queries on a Tree](https://atcoder.jp/contests/abc294/tasks/abc294_g)
