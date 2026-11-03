@@ -26,11 +26,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Rustdoc
+      - name: Build API and cheatsheet Rustdoc in one command
         run: cargo doc --no-deps
-
-      - name: Build separate cheatsheet Rustdoc
-        run: cargo doc --manifest-path docs/cheatsheet/Cargo.toml --target-dir target --no-deps
 
       - name: Create a two-choice documentation entry
         run: |

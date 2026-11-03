@@ -103,23 +103,18 @@ src/
     └── string.rs                  英字変換・Manacher法
 ```
 
-APIドキュメントは次のコマンドで生成できます。
+APIリファレンスと[解法チートシート](docs/cheatsheet/index.md)は別々のRustdocですが、
+同じCargoワークスペースに属しています。**リポジトリ直下で次のコマンドを1回実行すると両方生成されます。**
 
 ```sh
 cargo doc --no-deps --open
 ```
 
-問題文から解法を逆引きする[解法チートシート](docs/cheatsheet/index.md)は、API一覧とは別のRustdocクレートです。
-「木」「グラフ」の各ページを開き、「こういうときにはこのアルゴリズム」という形式で探せます。
-検索欄では「最遠点」「共通祖先」「橋」などのキーワードも使えます。
-
-```sh
-cargo doc --no-deps
-cargo doc --manifest-path docs/cheatsheet/Cargo.toml --target-dir target --no-deps --open
-```
-
-生成される `target/doc/atcoder_cheatsheet/index.html` がチートシートの入口です。
-ドキュメント専用の別クレートなので、通常のライブラリや `cargo bundle` の対象にはなりません。
+生成先はそれぞれ `target/doc/atcoder/index.html` と
+`target/doc/atcoder_cheatsheet/index.html` です。
+通常のAPIリファレンス冒頭からもチートシートへ移動できます。
+問題文の条件から「こういうときにはこのアルゴリズム」を探せます。
+チートシートは別クレートなので、通常のライブラリや `cargo bundle` に含まれません。
 
 ## 提出用バンドル
 

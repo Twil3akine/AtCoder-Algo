@@ -11,6 +11,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "atcoder-cheatsheet"
+version = "0.1.0"
+dependencies = [
+ "atcoder",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

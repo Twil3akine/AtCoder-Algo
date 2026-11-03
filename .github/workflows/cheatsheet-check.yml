@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'src/lib.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'docs/cheatsheet/**'
       - '.github/workflows/docs.yml'
       - '.github/workflows/cheatsheet-check.yml'
@@ -18,10 +20,8 @@ jobs:
           components: rustfmt
       - name: Check Rust formatting
         run: rustfmt --check src/lib.rs docs/cheatsheet/src/lib.rs
-      - name: Build library Rustdoc and validate links
-        run: RUSTDOCFLAGS='-D rustdoc::broken_intra_doc_links' cargo doc --no-deps
-      - name: Build separate cheatsheet Rustdoc and validate links
-        run: RUSTDOCFLAGS='-D rustdoc::broken_intra_doc_links' cargo doc --manifest-path docs/cheatsheet/Cargo.toml --target-dir target --no-deps
+      - name: Build API and cheatsheet docs together, validate links
+        run: RUSTDOCFLAGS='-D rustdoc::broken_intra_doc_links' cargo doc --locked --no-deps
       - name: Verify distinct Rustdoc pages and alias index
         run: |
           test -f target/doc/atcoder/index.html
@@ -35,6 +35,5 @@ jobs:
           grep -qF '#[doc(alias = "無料移動")]' docs/cheatsheet/src/lib.rs
       - name: Verify document tests and Bundler
         run: |
-          cargo test --doc
-          cargo test --manifest-path docs/cheatsheet/Cargo.toml --doc
+          cargo test --locked --doc
           cargo test --manifest-path tools/bundler/Cargo.toml

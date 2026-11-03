@@ -9,3 +9,7 @@ rand = "0.8.5"
 
 [dev-dependencies]
 rand = "0.8.5"
+[workspace]
+members = ["docs/cheatsheet"]
+default-members = [".", "docs/cheatsheet"]
+resolver = "2"
